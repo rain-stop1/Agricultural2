@@ -6,18 +6,23 @@ import router from '@/router'
 // 创建axios实例
 const request = axios.create({
   baseURL: '/api',  // 使用Vite代理
-  timeout: 30000,  // 增加到30秒，天气API可能较慢
+  timeout: 60000,  // 增加到60秒，适应AI API的响应时间
   headers: {
     'Content-Type': 'application/json'
   }
 })
 
+// 从sessionStorage直接获取token，避免在拦截器中使用useUserStore
+const getToken = () => {
+  return sessionStorage.getItem('token') || ''
+}
+
 // 请求拦截器
 request.interceptors.request.use(
   (config) => {
-    const userStore = useUserStore()
-    if (userStore.token) {
-      config.headers.Authorization = `Bearer ${userStore.token}`
+    const token = getToken()
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
     }
     return config
   },

@@ -17,7 +17,7 @@ app.use(compression())
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['http://localhost:3000'] // 生产环境需要配置实际域名
-    : ['http://localhost:3000', 'http://localhost:3004'],
+    : ['http://localhost:3000', 'http://localhost:3004', 'http://localhost:3005', 'http://localhost:3006'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -70,6 +70,9 @@ app.use('/api/admin', require('./routes/admin'))
 app.use('/api/weather', require('./routes/weather'))
 app.use('/api/farmer', require('./routes/farmer'))
 app.use('/api/fields', require('./routes/field'))
+app.use('/api/ai', require('./routes/ai'))
+app.use('/api/upload', require('./routes/upload'))
+app.use('/api/notification', require('./routes/notification'))
 
 // 数据库连接
 const sequelize = require('./config/database')
@@ -129,12 +132,14 @@ const startServer = async () => {
     await sequelize.authenticate()
     console.log('数据库连接成功')
     
-    // 同步数据库模型（开发环境）
-    // 注意：已禁用自动同步，使用手动创建的表结构
-    // if (process.env.NODE_ENV === 'development' && process.env.ENABLE_DB_SYNC !== 'false') {
-    //   await sequelize.sync({ alter: false })
-    //   console.log('数据库模型同步完成')
-    // }
+    // 手动创建notifications表
+    try {
+      const createTableSQL = "CREATE TABLE IF NOT EXISTS `notifications` (`id` INT NOT NULL AUTO_INCREMENT, `title` VARCHAR(100) NOT NULL COMMENT '通知标题', `content` TEXT NOT NULL COMMENT '通知内容', `type` VARCHAR(20) NOT NULL DEFAULT 'info' COMMENT '通知类型：info, success, warning, error', `user_id` INT NULL COMMENT '接收用户ID，null表示所有管理员', `read_status` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '阅读状态', `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), INDEX `idx_user_id` (`user_id`), INDEX `idx_read_status` (`read_status`), INDEX `idx_created_at` (`created_at`), CONSTRAINT `fk_notifications_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统通知表'"
+      await sequelize.query(createTableSQL)
+      console.log('notifications表创建成功')
+    } catch (createError) {
+      console.error('创建notifications表失败:', createError.message)
+    }
     
     // 启动天气数据同步定时任务
     if (process.env.ENABLE_WEATHER_SYNC !== 'false') {

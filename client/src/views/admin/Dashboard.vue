@@ -865,9 +865,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  .stats-row {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
 }
 
 .system-status {

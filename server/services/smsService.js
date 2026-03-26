@@ -24,6 +24,10 @@ const SMS_TEMPLATES = {
   DISASTER_WARNING: {
     code: 'DISASTER_WARNING',
     content: '【农业预警】您的地块所在区域发布{disaster_type}预警，请注意防范。'
+  },
+  ADMIN_NOTIFICATION: {
+    code: 'ADMIN_NOTIFICATION',
+    content: '【农业预警】管理员通知：农户{executor}已完成指令，反馈内容：{feedback}。请及时查看系统。'
   }
 }
 
@@ -211,11 +215,32 @@ async function sendCommandSMS(farmers, command) {
   })
 }
 
+/**
+ * 发送管理员通知短信
+ * @param {Array<object>} admins - 管理员列表
+ * @param {object} feedback - 反馈信息
+ * @returns {Promise<object>} 发送结果
+ */
+async function sendAdminNotificationSMS(admins, feedback) {
+  const phones = admins.filter(a => a.phone).map(a => a.phone)
+  
+  if (phones.length === 0) {
+    console.log('[管理员通知] 没有有效的手机号')
+    return { total: 0, success: 0, failed: 0 }
+  }
+
+  return await sendBatchSMS(phones, 'ADMIN_NOTIFICATION', {
+    executor: feedback.executor,
+    feedback: feedback.feedback_content
+  })
+}
+
 module.exports = {
   sendSMS,
   sendBatchSMS,
   sendEmergencyPlanSMS,
   sendEmergencyCancelSMS,
   sendCommandSMS,
+  sendAdminNotificationSMS,
   SMS_TEMPLATES
 }

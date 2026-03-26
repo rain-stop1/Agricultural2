@@ -1,17 +1,19 @@
 <template>
   <div class="emergency-page">
     <!-- 顶部操作栏 -->
-    <div class="action-bar">
-      <el-button type="primary" @click="showPlanDialog = true">
-        <el-icon><DocumentAdd /></el-icon>
-        启动应急方案
-      </el-button>
-      <!-- 只有管理员可以发布区域指令 -->
-      <el-button v-if="isAdmin" type="warning" @click="showCommandDialog = true">
-        <el-icon><Bell /></el-icon>
-        发布区域指令
-      </el-button>
-    </div>
+  <div class="action-bar">
+    <!-- 预案管理 -->
+    <el-button type="primary" @click="showTemplateDialog = true">
+      <el-icon><DocumentAdd /></el-icon>
+      配置预案
+    </el-button>
+    <!-- 激活预案 -->
+    <el-button type="success" @click="showActivateDialog = true">
+      <el-icon><Check /></el-icon>
+      激活预案
+    </el-button>
+
+  </div>
 
     <!-- 主要内容区域 -->
     <el-row :gutter="20">
@@ -72,47 +74,89 @@
               <div class="plan-actions">
                 <el-button size="small" @click="viewPlanDetail(plan)">查看详情</el-button>
                 <el-button size="small" type="primary" @click="viewProgress(plan)">执行进度</el-button>
+                <el-button v-if="isAdmin" size="small" type="warning" @click="openCommandDialog(plan)">发布区域指令</el-button>
+                <el-button size="small" @click="toggleCommands(plan)">
+                  <el-icon v-if="plan.expanded"><ArrowUp /></el-icon>
+                  <el-icon v-else><ArrowDown /></el-icon>
+                  {{ plan.expanded ? '收起指令' : '查看指令' }}
+                </el-button>
                 <el-button size="small" type="success" @click="completePlan(plan)">完成方案</el-button>
                 <el-button v-if="isAdmin" size="small" type="danger" @click="cancelPlan(plan)">取消方案</el-button>
+              </div>
+
+              <!-- 区域指令列表（展开/收缩） -->
+              <div v-if="plan.expanded" class="commands-list">
+                <h4 style="margin: 16px 0 10px 0; font-size: 14px; font-weight: 600;">区域指令</h4>
+                <div v-if="plan.commands && plan.commands.length > 0" class="commands-container">
+                  <div 
+                    v-for="command in plan.commands" 
+                    :key="command.id"
+                    class="command-item"
+                  >
+                    <div class="command-header">
+                      <div class="command-tags">
+                        <el-tag :type="command.priority === 'urgent' ? 'danger' : 'warning'" size="small">
+                          {{ command.priority === 'urgent' ? '紧急' : '重要' }}
+                        </el-tag>
+                        <el-tag v-if="command.status === 'completed'" type="success" size="small">
+                          已完成
+                        </el-tag>
+                      </div>
+                      <div class="command-info">
+                        <span class="command-time">{{ formatTime(command.created_at) }}</span>
+                        <span class="command-response">
+                          响应: {{ command.completed_count || 0 }}/{{ command.target_count || 0 }}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="command-content">{{ command.command_content }}</div>
+                    <div class="command-region-actions">
+                      <div class="command-region">
+                        <el-icon><Location /></el-icon>
+                        {{ command.target_area }}
+                      </div>
+                      <div class="command-actions">
+                        <el-tag v-if="isFarmer && hasCompletedCommand(command.id)" type="success" size="small">
+                          已完成
+                        </el-tag>
+                        <el-button v-else-if="isFarmer && command.status !== 'completed'" size="small" type="primary" @click="completeCommand(command)">
+                          完成指令
+                        </el-button>
+                        <el-button v-if="isAdmin" size="small" type="info" @click="viewCommandFeedback(command)">
+                          <el-icon><View /></el-icon>
+                          查看反馈
+                        </el-button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="empty-commands">
+                  <el-empty description="暂无区域指令" :image-size="60" />
+                </div>
               </div>
             </div>
           </div>
         </el-card>
       </el-col>
 
-      <!-- 右侧：最新指令和反馈 -->
+      <!-- 右侧：执行反馈 -->
       <el-col :span="8">
-        <!-- 最新指令 -->
-        <el-card class="command-card">
-          <template #header>
-            <h3>最新指令</h3>
-          </template>
-
-          <div class="commands-list">
-            <div 
-              v-for="command in recentCommands" 
-              :key="command.id"
-              class="command-item"
-            >
-              <div class="command-header">
-                <el-tag :type="command.priority === 'urgent' ? 'danger' : 'warning'" size="small">
-                  {{ command.priority === 'urgent' ? '紧急' : '重要' }}
-                </el-tag>
-                <span class="command-time">{{ formatTime(command.created_at) }}</span>
-              </div>
-              <div class="command-content">{{ command.command_content }}</div>
-              <div class="command-region">
-                <el-icon><Location /></el-icon>
-                {{ command.target_area }}
-              </div>
-            </div>
-          </div>
-        </el-card>
-
         <!-- 执行反馈 -->
         <el-card class="feedback-card">
           <template #header>
-            <h3>执行反馈</h3>
+            <div class="card-header">
+              <h3>执行反馈</h3>
+              <div>
+                <el-button v-if="isAdmin" type="info" size="small" @click="loadData">
+                  <el-icon><Refresh /></el-icon>
+                  刷新反馈
+                </el-button>
+                <el-button v-if="isFarmer" type="primary" size="small" @click="showFeedbackDialog = true" style="margin-left: 8px;">
+                  <el-icon><Edit /></el-icon>
+                  提交反馈
+                </el-button>
+              </div>
+            </div>
           </template>
 
           <div class="feedback-list">
@@ -128,6 +172,14 @@
                 </el-tag>
               </div>
               <div class="feedback-content">{{ feedback.feedback_content }}</div>
+              <div v-if="feedback.attachment_url" class="feedback-image">
+                <el-image
+                  :src="feedback.attachment_url"
+                  fit="cover"
+                  :preview-src-list="[feedback.attachment_url]"
+                  style="width: 100px; height: 100px;"
+                />
+              </div>
               <div class="feedback-time">{{ formatTime(feedback.created_at) }}</div>
             </div>
           </div>
@@ -194,6 +246,102 @@
       </template>
     </el-dialog>
 
+    <!-- 配置预案对话框 -->
+    <el-dialog
+      v-model="showTemplateDialog"
+      title="配置预案"
+      width="600px"
+    >
+      <el-form :model="templateForm" label-width="100px">
+        <el-form-item label="灾害类型">
+          <el-select v-model="templateForm.disaster_type" placeholder="选择灾害类型">
+            <el-option label="干旱" value="drought" />
+            <el-option label="洪涝" value="flood" />
+            <el-option label="冻害" value="freeze" />
+            <el-option label="高温" value="heat" />
+            <el-option label="大风" value="wind" />
+            <el-option label="病虫害" value="pest" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="预案名称">
+          <el-input v-model="templateForm.plan_name" placeholder="输入预案名称" />
+        </el-form-item>
+
+
+
+        <el-form-item label="优先级">
+          <el-radio-group v-model="templateForm.priority">
+            <el-radio label="urgent">紧急</el-radio>
+            <el-radio label="important">重要</el-radio>
+            <el-radio label="normal">普通</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="预案描述">
+          <el-input 
+            v-model="templateForm.description" 
+            type="textarea" 
+            :rows="4"
+            placeholder="输入预案描述和应急措施"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="showTemplateDialog = false">取消</el-button>
+        <el-button type="primary" @click="createTemplate" :loading="templateLoading">
+          保存预案
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 激活预案对话框 -->
+    <el-dialog
+      v-model="showActivateDialog"
+      title="激活预案"
+      width="600px"
+    >
+      <el-form label-width="100px">
+        <el-form-item label="选择预案">
+          <el-select v-model="activateForm.plan_id" placeholder="选择要激活的预案">
+            <el-option 
+              v-for="plan in templates" 
+              :key="plan.id" 
+              :label="plan.plan_name" 
+              :value="plan.id"
+            >
+              <div class="option-content">
+                <div>{{ plan.plan_name }}</div>
+                <div class="option-desc">{{ getDisasterTypeName(plan.disaster_type) }} - {{ plan.target_area }}</div>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="目标区域">
+          <el-cascader
+            v-model="activateForm.target_area_array"
+            :options="regionOptions"
+            placeholder="请选择地区"
+            style="width: 100%"
+            clearable
+            :props="{ expandTrigger: 'hover' }"
+          />
+        </el-form-item>
+        <el-form-item label="详细区域">
+          <el-input v-model="activateForm.target_area_detail" placeholder="输入详细区域信息（如乡镇、村庄等）" />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="showActivateDialog = false">取消</el-button>
+        <el-button type="primary" @click="activatePlan" :loading="activateLoading">
+          激活预案
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 发布区域指令对话框 -->
     <el-dialog
       v-model="showCommandDialog"
@@ -201,15 +349,34 @@
       width="600px"
     >
       <el-form :model="commandForm" label-width="100px">
+        <el-form-item label="应急方案">
+          <el-select v-model="commandForm.plan_id" placeholder="选择应急方案">
+            <el-option 
+              v-for="plan in activePlans" 
+              :key="plan.id" 
+              :label="plan.plan_name" 
+              :value="plan.id"
+            >
+              <div class="option-content">
+                <div>{{ plan.plan_name }}</div>
+                <div class="option-desc">{{ getDisasterTypeName(plan.disaster_type) }} - {{ plan.target_area }}</div>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="目标区域">
           <el-cascader
             v-model="commandForm.target_area_array"
             :options="regionOptions"
-            placeholder="请选择目标区域"
+            placeholder="请选择地区"
             style="width: 100%"
             clearable
             :props="{ expandTrigger: 'hover' }"
           />
+        </el-form-item>
+        <el-form-item label="详细区域">
+          <el-input v-model="commandForm.target_area_detail" placeholder="输入详细区域信息（如乡镇、村庄等）" />
         </el-form-item>
 
         <el-form-item label="优先级">
@@ -301,27 +468,213 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 提交反馈对话框 -->
+    <el-dialog
+      v-model="showFeedbackDialog"
+      title="提交执行反馈"
+      width="600px"
+    >
+      <el-form :model="feedbackForm" label-width="100px">
+        <el-form-item label="指令选择" required>
+          <el-select v-model="feedbackForm.command_id" placeholder="选择要反馈的指令">
+            <el-option 
+              v-for="command in recentCommands" 
+              :key="command.id" 
+              :label="command.command_content" 
+              :value="command.id"
+            >
+              <div class="option-content">
+                <div>{{ command.command_content }}</div>
+                <div class="option-desc">{{ command.target_area }} - {{ formatTime(command.created_at) }}</div>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="执行状态" required>
+          <el-radio-group v-model="feedbackForm.status">
+            <el-radio label="completed">已完成</el-radio>
+            <el-radio label="in_progress">进行中</el-radio>
+            <el-radio label="pending">待执行</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="反馈内容" required>
+          <el-input 
+            v-model="feedbackForm.feedback_content" 
+            type="textarea" 
+            :rows="5"
+            placeholder="请描述执行情况和结果"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+
+        <el-form-item label="上传凭证">
+          <el-upload
+            class="upload-demo"
+            action="#"
+            :auto-upload="false"
+            :on-change="handleFileChange"
+            :file-list="feedbackForm.files"
+            :limit="1"
+            :on-exceed="handleExceed"
+            accept="image/jpeg,image/jpg,image/png,image/gif"
+            list-type="picture"
+            :preview-src-list="feedbackForm.files.map(file => file.url)"
+          >
+            <el-button type="primary">
+              <el-icon><Plus /></el-icon>
+              点击上传
+            </el-button>
+            <template #tip>
+              <div class="el-upload__tip">
+                请上传现场处理完毕的照片作为凭证（支持 JPG、PNG 格式，最大 5MB）
+              </div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="showFeedbackDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitFeedbackForm" :loading="feedbackLoading">
+          提交反馈
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 完成指令对话框 -->
+    <el-dialog
+      v-model="showCompleteDialog"
+      title="完成指令"
+      width="600px"
+    >
+      <el-form :model="completeForm" label-width="100px">
+        <el-form-item label="指令内容">
+          <el-input v-model="completeForm.command_content" readonly />
+        </el-form-item>
+
+        <el-form-item label="目标区域">
+          <el-input v-model="completeForm.target_area" readonly />
+        </el-form-item>
+
+        <el-form-item label="完成描述" required>
+          <el-input 
+            v-model="completeForm.feedback_content" 
+            type="textarea" 
+            :rows="5"
+            placeholder="请描述执行情况和结果"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+
+        <el-form-item label="上传凭证">
+          <el-upload
+            class="upload-demo"
+            action="#"
+            :auto-upload="false"
+            :on-change="handleCompleteFileChange"
+            :file-list="completeForm.files"
+            :limit="1"
+            :on-exceed="handleExceed"
+            accept="image/jpeg,image/jpg,image/png,image/gif"
+            list-type="picture"
+            :preview-src-list="completeForm.files.map(file => file.url)"
+          >
+            <el-button type="primary">
+              <el-icon><Plus /></el-icon>
+              点击上传
+            </el-button>
+            <template #tip>
+              <div class="el-upload__tip">
+                请上传现场处理完毕的照片作为凭证（支持 JPG、PNG 格式，最大 5MB）
+              </div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="showCompleteDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitCompleteForm" :loading="completeLoading">
+          提交完成
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 反馈详情对话框 -->
+    <el-dialog
+      v-model="showFeedbackDetailDialog"
+      :title="`${selectedCommand?.command_content} - 反馈详情`"
+      width="800px"
+    >
+      <div v-if="commandFeedbacks.length > 0" class="feedback-detail-list">
+        <div 
+          v-for="feedback in commandFeedbacks" 
+          :key="feedback.id"
+          class="feedback-detail-item"
+        >
+          <div class="feedback-detail-header">
+            <div class="feedback-detail-user">
+              <span class="user-name">{{ feedback.executor }}</span>
+              <el-tag :type="getFeedbackStatusTag(feedback.status)" size="small" style="margin-left: 8px;">
+                {{ getFeedbackStatusText(feedback.status) }}
+              </el-tag>
+            </div>
+            <div class="feedback-detail-time">{{ formatTime(feedback.created_at) }}</div>
+          </div>
+          <div class="feedback-detail-content">{{ feedback.feedback_content }}</div>
+          <div v-if="feedback.attachment_url" class="feedback-detail-image">
+            <el-image
+              :src="feedback.attachment_url"
+              fit="cover"
+              :preview-src-list="[feedback.attachment_url]"
+              style="width: 200px; height: 200px;"
+            />
+          </div>
+          <el-divider v-if="!$last" />
+        </div>
+      </div>
+      <div v-else class="empty-feedback">
+        <el-empty description="暂无反馈信息" />
+      </div>
+
+      <template #footer>
+        <el-button @click="showFeedbackDetailDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   DocumentAdd,
   Bell,
-  Location
+  Location,
+  ArrowUp,
+  ArrowDown,
+  View
 } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import { useUserStore } from '@/stores/user'
 import { regions } from '@/utils/regions'
+import request from '@/api/request'
 import {
   getEmergencyPlans,
   startEmergencyPlan,
+  createEmergencyTemplate,
+  activateEmergencyPlan,
   getCommands,
   publishCommand as publishCommandAPI,
   getFeedbacks,
-  cancelEmergencyPlan
+  submitFeedback as submitFeedbackAPI,
+  cancelEmergencyPlan,
+  completeEmergencyPlan
 } from '@/api/emergency'
 
 // 用户信息
@@ -342,21 +695,45 @@ const isAdmin = computed(() => userStore.user?.user_type === 'admin')
 const isFarmer = computed(() => userStore.user?.user_type === 'farmer')
 
 // 响应式数据
-const showPlanDialog = ref(false)
+const showTemplateDialog = ref(false)
+const showActivateDialog = ref(false)
 const showCommandDialog = ref(false)
 const showProgressDialog = ref(false)
 const showCancelDialog = ref(false)
+const showFeedbackDialog = ref(false)
+const showCompleteDialog = ref(false)
+const showFeedbackDetailDialog = ref(false)
 const planLoading = ref(false)
+const templateLoading = ref(false)
+const activateLoading = ref(false)
 const commandLoading = ref(false)
+const feedbackLoading = ref(false)
+const completeLoading = ref(false)
 const activePlans = ref([])
+const templates = ref([])
 const recentCommands = ref([])
 const recentFeedback = ref([])
 const selectedPlan = ref(null)
+const selectedCommand = ref(null)
+const commandFeedbacks = ref([])
 const progressList = ref([])
 const useMockData = ref(false) // 标记是否使用模拟数据
 
+// 检查用户是否已完成指令
+const hasCompletedCommand = (commandId) => {
+  const userId = userStore.user?.id
+  if (!userId) return false
+  
+  // 检查recentFeedback中是否有该用户对该指令的反馈
+  return recentFeedback.value.some(feedback => 
+    feedback.command_id === commandId && 
+    feedback.user_id === userId &&
+    feedback.status === 'completed'
+  )
+}
+
 // 表单数据
-const planForm = reactive({
+const templateForm = reactive({
   disaster_type: '',
   plan_name: '',
   target_area: '',
@@ -365,16 +742,72 @@ const planForm = reactive({
   description: ''
 })
 
+const activateForm = reactive({
+  plan_id: '',
+  target_area_array: [],
+  target_area_detail: '',
+  target_area: ''
+})
+
 const commandForm = reactive({
+  plan_id: '',
   target_area: '',
   target_area_array: [],
+  target_area_detail: '',
   priority: 'important',
   command_content: ''
+})
+
+// 监听应急方案选择变化，自动更新目标区域
+watch(() => commandForm.plan_id, (newPlanId) => {
+  if (newPlanId) {
+    const selectedPlan = activePlans.value.find(plan => plan.id === newPlanId)
+    if (selectedPlan) {
+      // 自动设置目标区域为应急方案的目标区域
+      commandForm.target_area = selectedPlan.target_area
+      
+      // 尝试解析目标区域为数组格式
+      // 优先处理单个区域的情况，例如："北京市昌平区" -> ["北京市", "昌平区"]
+      const regionMatch = selectedPlan.target_area.match(/^(\S+[省市自治区])([^、，,]+)$/)
+      if (regionMatch && regionMatch.length === 3) {
+        const province = regionMatch[1]
+        const city = regionMatch[2].trim()
+        
+        // 验证解析出的省和市是否在regions数据中
+        const provinceObj = regions.find(r => r.province === province)
+        if (provinceObj && provinceObj.cities.includes(city)) {
+          commandForm.target_area_array = [province, city]
+        } else {
+          // 如果解析失败，保持空数组
+          commandForm.target_area_array = []
+        }
+      } else {
+        commandForm.target_area_array = []
+      }
+    }
+  }
 })
 
 const cancelForm = reactive({
   plan: null,
   reason: ''
+})
+
+const feedbackForm = reactive({
+  command_id: '',
+  status: 'completed',
+  feedback_content: '',
+  files: [],
+  attachment_url: ''
+})
+
+const completeForm = reactive({
+  command_id: '',
+  command_content: '',
+  target_area: '',
+  feedback_content: '',
+  files: [],
+  attachment_url: ''
 })
 
 // 模拟数据
@@ -434,6 +867,8 @@ const initMockData = () => {
   recentFeedback.value = [
     {
       id: 1,
+      command_id: 1,
+      user_id: 1,
       executor: '张三',
       status: 'completed',
       feedback_content: '已完成排水沟清理，田间积水基本排除',
@@ -441,6 +876,8 @@ const initMockData = () => {
     },
     {
       id: 2,
+      command_id: 2,
+      user_id: 2,
       executor: '李四',
       status: 'in_progress',
       feedback_content: '正在组织灌溉设备，预计1小时内完成',
@@ -448,6 +885,8 @@ const initMockData = () => {
     },
     {
       id: 3,
+      command_id: 3,
+      user_id: 3,
       executor: '王五',
       status: 'pending',
       feedback_content: '收到指令，准备开始执行',
@@ -460,20 +899,159 @@ const initMockData = () => {
 const loadData = async () => {
   try {
     // 尝试从API加载数据
-    const [plansRes, commandsRes, feedbacksRes] = await Promise.all([
-      getEmergencyPlans(),
+    const [plansRes, templatesRes, commandsRes, feedbacksRes] = await Promise.all([
+      getEmergencyPlans({ planType: 'active' }),
+      getEmergencyPlans({ planType: 'plan' }),
       getCommands(),
       getFeedbacks()
     ])
     
+    // 保存当前展开的方案ID
+    const expandedPlanIds = activePlans.value
+      .filter(plan => plan.expanded)
+      .map(plan => plan.id)
+    
     activePlans.value = plansRes.data || []
+    templates.value = templatesRes.data || []
     recentCommands.value = commandsRes.data || []
     recentFeedback.value = feedbacksRes.data || []
     useMockData.value = false
+    
+    // 重新加载展开的方案的指令列表
+    for (const plan of activePlans.value) {
+      if (expandedPlanIds.includes(plan.id)) {
+        plan.expanded = true
+        try {
+          const commandsRes = await getCommands({ plan_id: plan.id })
+          plan.commands = commandsRes.data || []
+        } catch (error) {
+          console.error('获取方案指令失败:', error)
+          plan.commands = []
+        }
+      }
+    }
   } catch (error) {
     console.warn('API加载失败，使用模拟数据:', error)
     initMockData()
     useMockData.value = true
+  }
+}
+
+// 创建预案
+const createTemplate = async () => {
+  if (!templateForm.disaster_type || !templateForm.plan_name) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+
+  templateLoading.value = true
+  
+  try {
+    const submitData = {
+      disaster_type: templateForm.disaster_type,
+      plan_name: templateForm.plan_name,
+      priority: templateForm.priority,
+      description: templateForm.description
+    }
+
+    if (useMockData.value) {
+      // 模拟数据模式
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const newTemplate = {
+        id: Date.now(),
+        ...submitData,
+        plan_type: 'plan',
+        status: 'active',
+        progress: 0,
+        created_at: new Date()
+      }
+      templates.value.unshift(newTemplate)
+    } else {
+      // API模式
+      await createEmergencyTemplate(submitData)
+      await loadData() // 重新加载数据
+    }
+    
+    ElMessage.success('预案创建成功')
+    showTemplateDialog.value = false
+    
+    // 重置表单
+    Object.assign(templateForm, {
+      disaster_type: '',
+      plan_name: '',
+      priority: 'important',
+      description: ''
+    })
+  } catch (error) {
+    console.error('创建预案失败:', error)
+    ElMessage.error('创建预案失败')
+  } finally {
+    templateLoading.value = false
+  }
+}
+
+// 激活预案
+const activatePlan = async () => {
+  if (!activateForm.plan_id || activateForm.target_area_array.length === 0) {
+    ElMessage.warning('请选择要激活的预案和目标区域')
+    return
+  }
+
+  // 组合目标区域
+  let target_area = ''
+  if (activateForm.target_area_array.length === 2) {
+    target_area = activateForm.target_area_array.join('')
+    if (activateForm.target_area_detail) {
+      target_area += activateForm.target_area_detail
+    }
+  }
+
+  activateLoading.value = true
+  
+  try {
+    if (useMockData.value) {
+      // 模拟数据模式
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const template = templates.value.find(t => t.id === activateForm.plan_id)
+      if (template) {
+        const newPlan = {
+          id: Date.now(),
+          disaster_type: template.disaster_type,
+          plan_name: template.plan_name,
+          target_area: target_area,
+          priority: template.priority,
+          description: template.description,
+          plan_type: 'active',
+          status: 'active',
+          progress: 0,
+          response_count: 0,
+          target_count: 10,
+          start_time: new Date(),
+          created_at: new Date()
+        }
+        activePlans.value.unshift(newPlan)
+      }
+    } else {
+      // API模式
+      await activateEmergencyPlan(activateForm.plan_id, target_area)
+      await loadData() // 重新加载数据
+    }
+    
+    ElMessage.success('预案激活成功')
+    showActivateDialog.value = false
+    
+    // 重置表单
+    Object.assign(activateForm, {
+      plan_id: '',
+      target_area_array: [],
+      target_area_detail: '',
+      target_area: ''
+    })
+  } catch (error) {
+    console.error('激活预案失败:', error)
+    ElMessage.error('激活预案失败')
+  } finally {
+    activateLoading.value = false
   }
 }
 
@@ -541,20 +1119,25 @@ const startPlan = async () => {
 
 // 发布区域指令
 const publishCommand = async () => {
-  if (commandForm.target_area_array.length === 0 || !commandForm.command_content) {
+  if (!commandForm.plan_id || commandForm.target_area_array.length === 0 || !commandForm.command_content) {
     ElMessage.warning('请填写完整信息')
     return
   }
 
-  // 将 target_area_array 转换为字符串
-  const target_area = commandForm.target_area_array.length === 2
-    ? `${commandForm.target_area_array[0]}${commandForm.target_area_array[1]}`
-    : ''
+  // 组合目标区域
+  let target_area = ''
+  if (commandForm.target_area_array.length === 2) {
+    target_area = commandForm.target_area_array.join('')
+    if (commandForm.target_area_detail) {
+      target_area += commandForm.target_area_detail
+    }
+  }
 
   commandLoading.value = true
   
   try {
     const submitData = {
+      plan_id: commandForm.plan_id,
       target_area: target_area,
       priority: commandForm.priority,
       command_content: commandForm.command_content
@@ -580,8 +1163,10 @@ const publishCommand = async () => {
     
     // 重置表单
     Object.assign(commandForm, {
+      plan_id: '',
       target_area: '',
       target_area_array: [],
+      target_area_detail: '',
       priority: 'important',
       command_content: ''
     })
@@ -594,24 +1179,72 @@ const publishCommand = async () => {
 }
 
 // 查看方案详情
-const viewPlanDetail = (plan) => {
-  ElMessageBox.alert(
-    `
-      <div style="padding: 10px;">
-        <p><strong>方案名称：</strong>${plan.plan_name}</p>
-        <p><strong>灾害类型：</strong>${getDisasterTypeName(plan.disaster_type)}</p>
-        <p><strong>目标区域：</strong>${plan.target_area}</p>
-        <p><strong>启动时间：</strong>${formatTime(plan.start_time)}</p>
-        <p><strong>执行进度：</strong>${plan.progress}%</p>
-        <p><strong>响应情况：</strong>${plan.response_count}/${plan.target_count || 0} 人</p>
-      </div>
-    `,
-    '方案详情',
-    {
-      dangerouslyUseHTMLString: true,
-      confirmButtonText: '关闭'
+const viewPlanDetail = async (plan) => {
+  try {
+    // 获取该方案下的所有指令
+    const commandsRes = await getCommands({ plan_id: plan.id })
+    const planCommands = commandsRes.data || []
+    
+    // 构建指令列表HTML
+    let commandsHtml = ''
+    if (planCommands.length > 0) {
+      commandsHtml = `
+        <h4 style="margin-top: 20px; margin-bottom: 10px;">区域指令</h4>
+        <div style="border: 1px solid #e4e7ed; border-radius: 4px; padding: 10px;">
+          ${planCommands.map(cmd => `
+            <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #f0f0f0;">
+              <p><strong>指令内容：</strong>${cmd.command_content}</p>
+              <p><strong>目标区域：</strong>${cmd.target_area}</p>
+              <p><strong>优先级：</strong>${cmd.priority === 'urgent' ? '紧急' : cmd.priority === 'important' ? '重要' : '普通'}</p>
+              <p><strong>发布时间：</strong>${formatTime(cmd.created_at)}</p>
+            </div>
+          `).join('')}
+        </div>
+      `
     }
-  )
+    
+    ElMessageBox.alert(
+      `
+        <div style="padding: 10px;">
+          <p><strong>方案名称：</strong>${plan.plan_name}</p>
+          <p><strong>灾害类型：</strong>${getDisasterTypeName(plan.disaster_type)}</p>
+          <p><strong>目标区域：</strong>${plan.target_area}</p>
+          <p><strong>方案描述：</strong>${plan.description || '无'}</p>
+          <p><strong>启动时间：</strong>${formatTime(plan.start_time)}</p>
+          <p><strong>执行进度：</strong>${plan.progress}%</p>
+          <p><strong>响应情况：</strong>${plan.response_count}/${plan.target_count || 0} 人</p>
+          ${commandsHtml}
+        </div>
+      `,
+      '方案详情',
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '关闭',
+        customClass: 'plan-detail-dialog'
+      }
+    )
+  } catch (error) {
+    console.error('获取方案指令失败:', error)
+    // 出错时显示基本信息
+    ElMessageBox.alert(
+      `
+        <div style="padding: 10px;">
+          <p><strong>方案名称：</strong>${plan.plan_name}</p>
+          <p><strong>灾害类型：</strong>${getDisasterTypeName(plan.disaster_type)}</p>
+          <p><strong>目标区域：</strong>${plan.target_area}</p>
+          <p><strong>方案描述：</strong>${plan.description || '无'}</p>
+          <p><strong>启动时间：</strong>${formatTime(plan.start_time)}</p>
+          <p><strong>执行进度：</strong>${plan.progress}%</p>
+          <p><strong>响应情况：</strong>${plan.response_count}/${plan.target_count || 0} 人</p>
+        </div>
+      `,
+      '方案详情',
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '关闭'
+      }
+    )
+  }
 }
 
 // 查看执行进度
@@ -670,13 +1303,33 @@ const completePlan = async (plan) => {
       }
     )
     
-    const index = activePlans.value.findIndex(p => p.id === plan.id)
-    if (index > -1) {
-      activePlans.value.splice(index, 1)
-      ElMessage.success('方案已完成')
+    planLoading.value = true
+    
+    if (useMockData.value) {
+      // 模拟数据模式
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const index = activePlans.value.findIndex(p => p.id === plan.id)
+      if (index > -1) {
+        activePlans.value.splice(index, 1)
+        ElMessage.success('方案已完成')
+      }
+    } else {
+      // API模式
+      const response = await completeEmergencyPlan(plan.id, {})
+      if (response.code === 200) {
+        ElMessage.success(`方案已完成，已通知 ${response.data.notified_count || 0} 位农户`)
+        await loadData() // 重新加载数据
+      } else {
+        ElMessage.error(response.message || '完成失败')
+      }
     }
   } catch (error) {
-    // 用户取消
+    if (error !== 'cancel') {
+      console.error('完成方案失败:', error)
+      ElMessage.error('完成方案失败')
+    }
+  } finally {
+    planLoading.value = false
   }
 }
 
@@ -685,6 +1338,60 @@ const cancelPlan = (plan) => {
   cancelForm.plan = plan
   cancelForm.reason = ''
   showCancelDialog.value = true
+}
+
+// 打开发布指令对话框
+const openCommandDialog = (plan) => {
+  if (plan) {
+    // 设置为当前点击的应急方案
+    commandForm.plan_id = plan.id
+    
+    // 自动设置目标区域为应急方案的目标区域
+    commandForm.target_area = plan.target_area
+    
+    // 尝试解析目标区域为数组格式
+    // 优先处理单个区域的情况，例如："北京市昌平区" -> ["北京市", "昌平区"]
+    const regionMatch = plan.target_area.match(/^(\S+[省市自治区])([^、，,]+)$/)
+    if (regionMatch && regionMatch.length === 3) {
+      const province = regionMatch[1]
+      const city = regionMatch[2].trim()
+      
+      // 验证解析出的省和市是否在regions数据中
+      const provinceObj = regions.find(r => r.province === province)
+      if (provinceObj && provinceObj.cities.includes(city)) {
+        commandForm.target_area_array = [province, city]
+      } else {
+        // 如果解析失败，保持空数组
+        commandForm.target_area_array = []
+      }
+    } else {
+      commandForm.target_area_array = []
+    }
+    
+    showCommandDialog.value = true
+  } else {
+    ElMessage.warning('请先激活应急方案')
+  }
+}
+
+// 切换指令列表展开/收缩
+const toggleCommands = async (plan) => {
+  if (plan.expanded) {
+    // 收起
+    plan.expanded = false
+  } else {
+    // 展开并加载指令
+    plan.expanded = true
+    // 加载该方案下的指令
+    try {
+      const commandsRes = await getCommands({ plan_id: plan.id })
+      plan.commands = commandsRes.data || []
+    } catch (error) {
+      console.error('获取方案指令失败:', error)
+      plan.commands = []
+      ElMessage.error('获取指令失败')
+    }
+  }
 }
 
 // 确认取消方案
@@ -721,6 +1428,239 @@ const confirmCancelPlan = async () => {
     ElMessage.error('取消方案失败')
   } finally {
     planLoading.value = false
+  }
+}
+
+// 处理文件上传
+const handleFileChange = async (file, fileList) => {
+  // 验证文件格式
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif']
+  const fileExtension = file.name.split('.').pop().toLowerCase()
+  const validExtensions = ['jpg', 'jpeg', 'png', 'gif']
+  
+  if (!validTypes.includes(file.raw.type) || !validExtensions.includes(fileExtension)) {
+    ElMessage.error('只支持上传 JPG、PNG、GIF 格式的图片')
+    return
+  }
+  
+  // 实现真实的文件上传
+  if (file.raw) {
+    const formData = new FormData()
+    formData.append('file', file.raw)
+    
+    try {
+      // 调用后端文件上传API，不手动设置Content-Type，让浏览器自动处理
+      const response = await request.post('/upload', formData, {
+        headers: {
+          'Content-Type': undefined // 让浏览器自动设置
+        }
+      })
+      
+      // 更新文件列表，添加url属性用于预览
+      const updatedFileList = fileList.map(f => {
+        if (f.uid === file.uid) {
+          return {
+            ...f,
+            url: response.data.url // 添加url属性
+          }
+        }
+        return f
+      })
+      
+      feedbackForm.files = updatedFileList
+      feedbackForm.attachment_url = response.data.url
+      ElMessage.success('图片上传成功')
+    } catch (error) {
+      console.error('上传失败:', error)
+      ElMessage.error('上传失败，请重试')
+      feedbackForm.files = []
+      feedbackForm.attachment_url = ''
+    }
+  }
+}
+
+// 处理文件超出限制
+const handleExceed = (files, fileList) => {
+  ElMessage.warning('只能上传一个文件')
+}
+
+// 提交反馈
+const submitFeedbackForm = async () => {
+  if (!feedbackForm.command_id || !feedbackForm.feedback_content) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+
+  feedbackLoading.value = true
+  
+  try {
+    const submitData = {
+      command_id: feedbackForm.command_id,
+      feedback_content: feedbackForm.feedback_content,
+      status: feedbackForm.status,
+      attachment_url: feedbackForm.attachment_url
+    }
+
+    if (useMockData.value) {
+      // 模拟数据模式
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const newFeedback = {
+        id: Date.now(),
+        ...submitData,
+        executor: userStore.user?.real_name || '农户',
+        created_at: new Date()
+      }
+      recentFeedback.value.unshift(newFeedback)
+    } else {
+      // API模式
+      await submitFeedbackAPI(submitData)
+      await loadData() // 重新加载数据
+    }
+    
+    // 触发应急响应页面刷新，通知管理员端
+    userStore.triggerEmergencyRefresh()
+    
+    ElMessage.success('反馈提交成功')
+    showFeedbackDialog.value = false
+    
+    // 重置表单
+    Object.assign(feedbackForm, {
+      command_id: '',
+      status: 'completed',
+      feedback_content: '',
+      files: [],
+      attachment_url: ''
+    })
+  } catch (error) {
+    console.error('提交反馈失败:', error)
+    ElMessage.error('提交反馈失败')
+  } finally {
+    feedbackLoading.value = false
+  }
+}
+
+// 打开发完成指令对话框
+const completeCommand = (command) => {
+  // 设置表单数据
+  completeForm.command_id = command.id
+  completeForm.command_content = command.command_content
+  completeForm.target_area = command.target_area
+  completeForm.feedback_content = ''
+  completeForm.files = []
+  completeForm.attachment_url = ''
+  
+  showCompleteDialog.value = true
+}
+
+// 查看指令反馈
+const viewCommandFeedback = (command) => {
+  selectedCommand.value = command
+  // 从 recentFeedback 中筛选出与该命令相关的反馈
+  commandFeedbacks.value = recentFeedback.value.filter(feedback => feedback.command_id === command.id)
+  showFeedbackDetailDialog.value = true
+}
+
+// 处理完成指令的文件上传
+const handleCompleteFileChange = async (file, fileList) => {
+  // 验证文件格式
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif']
+  const fileExtension = file.name.split('.').pop().toLowerCase()
+  const validExtensions = ['jpg', 'jpeg', 'png', 'gif']
+  
+  if (!validTypes.includes(file.raw.type) || !validExtensions.includes(fileExtension)) {
+    ElMessage.error('只支持上传 JPG、PNG、GIF 格式的图片')
+    return
+  }
+  
+  // 实现真实的文件上传
+  if (file.raw) {
+    const formData = new FormData()
+    formData.append('file', file.raw)
+    
+    try {
+      // 调用后端文件上传API，不手动设置Content-Type，让浏览器自动处理
+      const response = await request.post('/upload', formData, {
+        headers: {
+          'Content-Type': undefined // 让浏览器自动设置
+        }
+      })
+      
+      // 更新文件列表，添加url属性用于预览
+      const updatedFileList = fileList.map(f => {
+        if (f.uid === file.uid) {
+          return {
+            ...f,
+            url: response.data.url // 添加url属性
+          }
+        }
+        return f
+      })
+      
+      completeForm.files = updatedFileList
+      completeForm.attachment_url = response.data.url
+      ElMessage.success('图片上传成功')
+    } catch (error) {
+      console.error('上传失败:', error)
+      ElMessage.error('上传失败，请重试')
+      completeForm.files = []
+      completeForm.attachment_url = ''
+    }
+  }
+}
+
+// 提交完成指令
+const submitCompleteForm = async () => {
+  if (!completeForm.command_id || !completeForm.feedback_content) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+
+  completeLoading.value = true
+  
+  try {
+    const submitData = {
+      command_id: completeForm.command_id,
+      feedback_content: completeForm.feedback_content,
+      status: 'completed',
+      attachment_url: completeForm.attachment_url
+    }
+
+    if (useMockData.value) {
+      // 模拟数据模式
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const newFeedback = {
+        id: Date.now(),
+        ...submitData,
+        executor: userStore.user?.real_name || '农户',
+        created_at: new Date()
+      }
+      recentFeedback.value.unshift(newFeedback)
+    } else {
+      // API模式
+      await submitFeedbackAPI(submitData)
+      await loadData() // 重新加载数据
+    }
+    
+    // 触发应急响应页面刷新，通知管理员端
+    userStore.triggerEmergencyRefresh()
+    
+    ElMessage.success('指令完成成功')
+    showCompleteDialog.value = false
+    
+    // 重置表单
+    Object.assign(completeForm, {
+      command_id: '',
+      command_content: '',
+      target_area: '',
+      feedback_content: '',
+      files: [],
+      attachment_url: ''
+    })
+  } catch (error) {
+    console.error('提交完成失败:', error)
+    ElMessage.error('提交完成失败')
+  } finally {
+    completeLoading.value = false
   }
 }
 
@@ -908,20 +1848,64 @@ watch(() => userStore.emergencyRefreshFlag, () => {
   margin-bottom: 20px;
 }
 
+/* 指令列表（展开/收缩） */
 .commands-list {
   max-height: 300px;
   overflow-y: auto;
+  position: relative;
+  margin-top: 16px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.commands-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+  padding-left: 30px;
+}
+
+.commands-container::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #e4e7ed;
+  pointer-events: none;
+}
+
+.empty-commands {
+  padding: 20px 0;
 }
 
 .command-item {
+  position: relative;
   padding: 12px;
   border-radius: 6px;
   background: #f5f7fa;
-  margin-bottom: 12px;
+  transition: all 0.3s;
 }
 
-.command-item:last-child {
-  margin-bottom: 0;
+.command-item::before {
+  content: '';
+  position: absolute;
+  left: -30px;
+  top: 20px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #409eff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 2px #409eff;
+  z-index: 1;
+}
+
+.command-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .command-header {
@@ -929,6 +1913,8 @@ watch(() => userStore.emergencyRefreshFlag, () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .command-time {
@@ -949,6 +1935,61 @@ watch(() => userStore.emergencyRefreshFlag, () => {
   gap: 4px;
   font-size: 12px;
   color: #606266;
+}
+
+.command-region-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.command-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 反馈详情样式 */
+.feedback-detail-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.feedback-detail-item {
+  margin-bottom: 20px;
+}
+
+.feedback-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.feedback-detail-user {
+  display: flex;
+  align-items: center;
+}
+
+.feedback-detail-time {
+  font-size: 12px;
+  color: #909399;
+}
+
+.feedback-detail-content {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+  color: #303133;
+}
+
+.feedback-detail-image {
+  margin-top: 12px;
+}
+
+.empty-feedback {
+  padding: 40px 0;
 }
 
 /* 反馈列表 */
@@ -997,6 +2038,55 @@ watch(() => userStore.emergencyRefreshFlag, () => {
   color: #909399;
 }
 
+.feedback-image {
+  margin: 8px 0;
+}
+
+.feedback-image img {
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.command-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.command-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.command-response {
+  font-size: 12px;
+  color: #606266;
+  background: #ecf5ff;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.command-time {
+  font-size: 12px;
+  color: #909399;
+}
+
+.command-content {
+  font-size: 14px;
+  color: #303133;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.command-region {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #606266;
+}
+
 /* 进度详情 */
 .progress-detail {
   padding: 20px 0;
@@ -1024,6 +2114,19 @@ watch(() => userStore.emergencyRefreshFlag, () => {
   font-style: italic;
 }
 
+/* 选项内容样式 */
+.option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option-desc {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+
 /* 响应式 */
 @media (max-width: 768px) {
   .plan-info {
@@ -1039,5 +2142,14 @@ watch(() => userStore.emergencyRefreshFlag, () => {
   .plan-status {
     width: 100%;
   }
+}
+
+/* 完成指令按钮样式 */
+.command-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
 }
 </style>

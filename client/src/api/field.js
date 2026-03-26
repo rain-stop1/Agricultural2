@@ -42,3 +42,37 @@ export const deleteField = (id) => {
     method: 'delete'
   })
 }
+
+// 管理员：获取所有地块
+export const getFields = (params) => {
+  return request({
+    url: '/fields/admin/all',
+    method: 'get',
+    params
+  })
+}
+
+// 管理员：获取地块详情
+export const getFieldById = (id) => {
+  return request({
+    url: `/fields/admin/${id}`,
+    method: 'get'
+  })
+}
+
+// 管理员：更新地块
+export const updateFieldAdmin = (id, data) => {
+  return request({
+    url: `/fields/admin/${id}`,
+    method: 'put',
+    data
+  })
+}
+
+// 管理员：删除地块
+export const deleteFieldAdmin = (id) => {
+  return request({
+    url: `/fields/admin/${id}`,
+    method: 'delete'
+  })
+}

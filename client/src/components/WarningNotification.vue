@@ -361,16 +361,19 @@ const requestNotificationPermission = () => {
 
 // 组件挂载
 onMounted(() => {
-  requestNotificationPermission()
-  initWebSocket()
-  
-  // 从 localStorage 加载历史记录
-  const savedHistory = localStorage.getItem('warning_notifications')
-  if (savedHistory) {
-    try {
-      notificationHistory.value = JSON.parse(savedHistory)
-    } catch (error) {
-      console.error('加载通知历史失败:', error)
+  // 确保只在客户端执行
+  if (typeof window !== 'undefined') {
+    requestNotificationPermission()
+    initWebSocket()
+    
+    // 从 localStorage 加载历史记录
+    const savedHistory = localStorage.getItem('warning_notifications')
+    if (savedHistory) {
+      try {
+        notificationHistory.value = JSON.parse(savedHistory)
+      } catch (error) {
+        console.error('加载通知历史失败:', error)
+      }
     }
   }
 })
@@ -382,11 +385,14 @@ onBeforeUnmount(() => {
   }
   clearReconnectTimer()
   
-  // 保存历史记录到 localStorage
-  try {
-    localStorage.setItem('warning_notifications', JSON.stringify(notificationHistory.value))
-  } catch (error) {
-    console.error('保存通知历史失败:', error)
+  // 确保只在客户端执行
+  if (typeof window !== 'undefined') {
+    // 保存历史记录到 localStorage
+    try {
+      localStorage.setItem('warning_notifications', JSON.stringify(notificationHistory.value))
+    } catch (error) {
+      console.error('保存通知历史失败:', error)
+    }
   }
 })
 </script>

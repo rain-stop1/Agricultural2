@@ -257,15 +257,24 @@ const formatTime = (time) => {
 const loadData = async () => {
   loading.value = true
   try {
+    console.log('开始加载地块列表...')
+    console.log('请求参数:', {
+      page: pagination.page,
+      limit: pagination.limit,
+      keyword: searchForm.keyword
+    })
     const response = await getMyFields({
       page: pagination.page,
       limit: pagination.limit,
       keyword: searchForm.keyword
     })
+    console.log('加载地块列表成功:', response)
     
     if (response.code === 200) {
       tableData.value = response.data.list
       pagination.total = response.data.total
+      console.log('表格数据:', tableData.value)
+      console.log('总记录数:', pagination.total)
     }
   } catch (error) {
     console.error('加载地块列表失败:', error)

@@ -15,6 +15,7 @@ const ResourceMatch = require('./ResourceMatch')(sequelize, DataTypes)
 const LossReport = require('./LossReport')(sequelize, DataTypes)
 const AssessmentReport = require('./AssessmentReport')(sequelize, DataTypes)
 const SystemLog = require('./SystemLog')(sequelize, DataTypes)
+const Notification = require('./Notification')(sequelize, DataTypes)
 
 // 定义关联关系
 const models = {
@@ -30,7 +31,8 @@ const models = {
   ResourceMatch,
   LossReport,
   AssessmentReport,
-  SystemLog
+  SystemLog,
+  Notification
 }
 
 // 设置关联关系
@@ -91,6 +93,10 @@ AssessmentReport.belongsTo(User, { foreignKey: 'created_by', as: 'creator' })
 // 用户与系统日志关联
 User.hasMany(SystemLog, { foreignKey: 'user_id', as: 'logs' })
 SystemLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' })
+
+// 用户与通知关联
+User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' })
+Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' })
 
 module.exports = {
   sequelize,

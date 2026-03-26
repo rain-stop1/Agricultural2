@@ -15,34 +15,39 @@
         router
         class="sidebar-menu"
       >
-        <el-menu-item index="/admin/dashboard">
+        <el-menu-item index="/">
           <el-icon><House /></el-icon>
-          <template #title>管理中心</template>
+          <template #title>首页概览</template>
         </el-menu-item>
         
-        <el-menu-item index="/admin/users">
+        <el-menu-item v-if="userStore.isAdmin" index="/admin/users">
           <el-icon><User /></el-icon>
           <template #title>用户管理</template>
         </el-menu-item>
         
-        <el-menu-item index="/admin/system">
+        <el-menu-item v-if="userStore.isAdmin" index="/admin/system">
           <el-icon><Tools /></el-icon>
           <template #title>系统管理</template>
         </el-menu-item>
         
-        <el-menu-item index="/admin/reports">
+        <el-menu-item v-if="userStore.isAdmin" index="/admin/fields">
+          <el-icon><MapLocation /></el-icon>
+          <template #title>地块管理</template>
+        </el-menu-item>
+        
+        <el-menu-item v-if="userStore.isAdmin" index="/admin/reports">
           <el-icon><DataAnalysis /></el-icon>
           <template #title>统计报表</template>
         </el-menu-item>
         
-        <el-divider style="margin: 12px 0; border-color: rgba(255,255,255,0.1);" />
+        <el-divider v-if="userStore.isAdmin" style="margin: 12px 0; border-color: rgba(255,255,255,0.1);" />
         
         <el-menu-item index="/warning">
           <el-icon><Warning /></el-icon>
           <template #title>灾害预警</template>
         </el-menu-item>
         
-        <el-menu-item index="/fields">
+        <el-menu-item v-if="!userStore.isAdmin" index="/fields">
           <el-icon><MapLocation /></el-icon>
           <template #title>地块管理</template>
         </el-menu-item>
@@ -60,6 +65,11 @@
         <el-menu-item index="/resources">
           <el-icon><Box /></el-icon>
           <template #title>资源管理</template>
+        </el-menu-item>
+        
+        <el-menu-item index="/ai/chat">
+          <el-icon><ChatDotRound /></el-icon>
+          <template #title>AI 智能助手</template>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -81,7 +91,7 @@
           </el-button>
           
           <el-breadcrumb separator="/" class="breadcrumb">
-            <el-breadcrumb-item :to="{ path: '/admin/dashboard' }">管理中心</el-breadcrumb-item>
+            <el-breadcrumb-item :to="{ path: '/' }">首页概览</el-breadcrumb-item>
             <el-breadcrumb-item v-if="$route.meta.title">
               {{ $route.meta.title }}
             </el-breadcrumb-item>
@@ -89,12 +99,8 @@
         </div>
         
         <div class="header-right">
-          <!-- 通知铃铛 -->
-          <el-badge :value="notificationCount" :hidden="notificationCount === 0" class="notification-badge">
-            <el-button text class="notification-btn">
-              <el-icon size="18"><Bell /></el-icon>
-            </el-button>
-          </el-badge>
+          <!-- 通知中心 -->
+          <Notification @new-notification="handleNewNotification" />
           
           <!-- 用户下拉菜单 -->
           <el-dropdown @command="handleCommand" class="user-dropdown">
@@ -127,12 +133,19 @@
       
       <!-- 主体内容 -->
       <el-main class="main-content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <component 
+            :is="Component" 
+            @new-notification="handleNewNotification"
+          />
+        </router-view>
       </el-main>
     </el-container>
     
     <!-- 实时预警通知 -->
     <WarningNotification />
+    <!-- 应急响应通知 -->
+    <EmergencyNotification />
     
     <!-- 修改密码对话框 -->
     <el-dialog
@@ -183,12 +196,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { changePassword } from '@/api/auth'
 import { ElMessage } from 'element-plus'
 import WarningNotification from '@/components/WarningNotification.vue'
+import EmergencyNotification from '@/components/EmergencyNotification.vue'
+import Notification from '@/components/Notification.vue'
 import {
   House,
   Warning,
@@ -205,7 +220,8 @@ import {
   Fold,
   Expand,
   Tools,
-  MapLocation
+  MapLocation,
+  ChatDotRound
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -214,8 +230,11 @@ const userStore = useUserStore()
 // 侧边栏折叠状态
 const isCollapse = ref(false)
 
-// 通知数量（模拟数据）
-const notificationCount = ref(3)
+// 通知事件
+const handleNewNotification = (notification) => {
+  // 触发全局事件
+  window.dispatchEvent(new CustomEvent('new-notification', { detail: notification }))
+}
 
 // 用户头像
 const userAvatar = computed(() => {

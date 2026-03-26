@@ -16,7 +16,7 @@ router.get('/resources', authenticateToken, async (req, res) => {
 
     // 农户只能看到自己添加的资源
     if (userType === 'farmer') {
-      whereClause += ' AND user_id = ?'
+      whereClause += ' AND owner = ?'
       replacements.push(userId)
     }
 
@@ -28,7 +28,7 @@ router.get('/resources', authenticateToken, async (req, res) => {
     const [resources] = await sequelize.query(`
       SELECT 
         id,
-        user_id,
+        owner as user_id,
         type,
         name,
         owner,
@@ -67,10 +67,10 @@ router.post('/resources', authenticateToken, async (req, res) => {
 
     const [result] = await sequelize.query(`
       INSERT INTO resources 
-      (user_id, type, name, owner, location, quantity, unit, status, remark, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?, NOW(), NOW())
+      (type, name, owner, location, quantity, unit, status, remark, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'available', ?, NOW(), NOW())
     `, {
-      replacements: [userId, type, name, owner, location, quantity, unit, remark]
+      replacements: [type, name, owner, location, quantity, unit, remark]
     })
 
     res.json({
@@ -98,14 +98,14 @@ router.get('/demands', authenticateToken, async (req, res) => {
 
     // 农户只能看到自己发布的需求
     if (userType === 'farmer') {
-      whereClause += ' AND user_id = ?'
+      whereClause += ' AND requester = ?'
       replacements.push(userId)
     }
 
     const [demands] = await sequelize.query(`
       SELECT 
         id,
-        user_id,
+        requester as user_id,
         resource_type,
         title,
         requester,
@@ -145,10 +145,10 @@ router.post('/demands', authenticateToken, async (req, res) => {
 
     const [result] = await sequelize.query(`
       INSERT INTO resource_demands 
-      (user_id, resource_type, title, requester, location, quantity, unit, urgency, description, matched, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
+      (resource_type, title, requester, location, quantity, unit, urgency, description, matched, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
     `, {
-      replacements: [userId, resource_type, title, requester, location, quantity, unit, urgency, description]
+      replacements: [resource_type, title, requester, location, quantity, unit, urgency, description]
     })
 
     res.json({

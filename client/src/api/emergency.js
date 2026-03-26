@@ -1,8 +1,18 @@
 import request from './request'
 
 // 获取应急方案列表
-export const getEmergencyPlans = () => {
-  return request.get('/emergency/plans')
+export const getEmergencyPlans = (params) => {
+  return request.get('/emergency/plans', { params })
+}
+
+// 创建预案
+export const createEmergencyTemplate = (data) => {
+  return request.post('/emergency/plans/template', data)
+}
+
+// 激活预案
+export const activateEmergencyPlan = (planId, targetArea) => {
+  return request.post(`/emergency/plans/${planId}/activate`, { target_area: targetArea })
 }
 
 // 启动应急方案
@@ -11,8 +21,8 @@ export const startEmergencyPlan = (data) => {
 }
 
 // 获取指令列表
-export const getCommands = () => {
-  return request.get('/emergency/commands')
+export const getCommands = (params) => {
+  return request.get('/emergency/commands', { params })
 }
 
 // 发布指令
@@ -33,4 +43,9 @@ export const submitFeedback = (data) => {
 // 取消应急方案
 export const cancelEmergencyPlan = (planId, data) => {
   return request.post(`/emergency/plans/${planId}/cancel`, data)
+}
+
+// 完成应急方案
+export const completeEmergencyPlan = (planId, data) => {
+  return request.post(`/emergency/plans/${planId}/complete`, data)
 }

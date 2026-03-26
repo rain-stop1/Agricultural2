@@ -1,6 +1,7 @@
 const express = require('express')
 const { authenticateToken } = require('../middleware/auth')
 const sequelize = require('../config/database')
+const { Notification } = require('../models')
 
 const router = express.Router()
 
@@ -43,7 +44,6 @@ router.get('/reports', authenticateToken, async (req, res) => {
         loss_rate,
         loss_amount,
         description,
-        images,
         status,
         report_time,
         created_at
@@ -54,18 +54,17 @@ router.get('/reports', authenticateToken, async (req, res) => {
       replacements
     })
 
-    // 解析 images JSON 字段
-    reports.forEach(report => {
-      if (report.images) {
-        try {
-          report.images = JSON.parse(report.images)
-        } catch (e) {
-          report.images = []
-        }
-      } else {
-        report.images = []
-      }
-    })
+    // 单独查询每个报告的images字段，避免排序时包含大字段
+    for (const report of reports) {
+      const [imageResult] = await sequelize.query(`
+        SELECT images FROM loss_reports WHERE id = ?
+      `, {
+        replacements: [report.id]
+      })
+      report.images = imageResult[0]?.images || []
+    }
+
+
 
     res.json({
       code: 200,
@@ -146,6 +145,15 @@ router.post('/reports', authenticateToken, async (req, res) => {
 
     console.log('插入成功，ID:', result)
 
+    // 创建通知给管理员
+    await Notification.create({
+      title: '新的损失报告提交',
+      content: `农户 ${reporter} 提交了一份损失报告，需要审核。`,
+      type: 'loss_report',
+      user_id: null, // 空值表示所有管理员都能看到
+      read_status: false
+    })
+
     const responseMessage = processedImages.length < (images?.length || 0)
       ? `损失上报提交成功，已保存${processedImages.length}张图片（${(images?.length || 0) - processedImages.length}张图片因过大被跳过）`
       : '损失上报提交成功'
@@ -174,12 +182,37 @@ router.put('/reports/:id/approve', authenticateToken, async (req, res) => {
     const { id } = req.params
     const { result, comment } = req.body
 
+    // 获取损失报告的用户信息
+    const [report] = await sequelize.query(`
+      SELECT user_id, reporter FROM loss_reports WHERE id = ?
+    `, {
+      replacements: [id]
+    })
+
+    if (report.length === 0) {
+      return res.status(404).json({
+        code: 404,
+        message: '损失报告不存在'
+      })
+    }
+
+    const { user_id, reporter } = report[0]
+
     await sequelize.query(`
       UPDATE loss_reports 
       SET status = ?, approve_comment = ?, updated_at = NOW()
       WHERE id = ?
     `, {
       replacements: [result, comment, id]
+    })
+
+    // 创建通知给农户
+    await Notification.create({
+      title: '损失报告审核结果',
+      content: `您的损失报告已被${result === 'approved' ? '通过' : '拒绝'}，${comment ? '备注：' + comment : ''}`,
+      type: 'loss_report',
+      user_id: user_id,
+      read_status: false
     })
 
     res.json({
@@ -199,6 +232,24 @@ router.put('/reports/:id/approve', authenticateToken, async (req, res) => {
 router.delete('/reports/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params
+    const userId = req.user.id
+    const userType = req.user.user_type
+
+    // 检查报告是否存在且属于当前用户（农户只能删除自己的报告）
+    if (userType === 'farmer') {
+      const [report] = await sequelize.query(`
+        SELECT id FROM loss_reports WHERE id = ? AND user_id = ?
+      `, {
+        replacements: [id, userId]
+      })
+
+      if (report.length === 0) {
+        return res.status(403).json({
+          code: 403,
+          message: '无权删除此报告'
+        })
+      }
+    }
 
     await sequelize.query(`
       DELETE FROM loss_reports WHERE id = ?
@@ -222,6 +273,18 @@ router.delete('/reports/:id', authenticateToken, async (req, res) => {
 // 获取统计数据
 router.get('/statistics', authenticateToken, async (req, res) => {
   try {
+    const userId = req.user.id
+    const userType = req.user.user_type
+
+    let whereClause = ''
+    const replacements = []
+
+    // 农户只能看到自己的报告统计
+    if (userType === 'farmer') {
+      whereClause = 'WHERE user_id = ?'
+      replacements.push(userId)
+    }
+
     const [stats] = await sequelize.query(`
       SELECT 
         COUNT(*) as total_reports,
@@ -229,7 +292,10 @@ router.get('/statistics', authenticateToken, async (req, res) => {
         SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_reports,
         COALESCE(SUM(loss_amount), 0) as total_loss
       FROM loss_reports
-    `)
+      ${whereClause}
+    `, {
+      replacements
+    })
 
     res.json({
       code: 200,

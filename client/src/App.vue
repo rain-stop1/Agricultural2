@@ -7,12 +7,16 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useUserStore } from '@/stores/user'
+import { useWeatherStore } from '@/stores/weather'
 
 const userStore = useUserStore()
+const weatherStore = useWeatherStore()
 
 onMounted(() => {
   // 应用启动时检查本地存储的token
   userStore.checkToken()
+  // 应用启动时加载天气数据
+  weatherStore.loadWeatherData()
 })
 </script>
 

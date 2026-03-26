@@ -1,5 +1,12 @@
 <template>
   <div class="loss-page">
+    <!-- 图片预览组件 -->
+    <el-image-viewer
+      v-if="showImageViewer"
+      :url-list="currentReport.images"
+      :initial-index="imageViewerIndex"
+      @close="showImageViewer = false"
+    />
     <!-- 顶部操作栏 -->
     <div class="action-bar">
       <el-button type="danger" @click="showReportDialog = true">
@@ -134,28 +141,44 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="report_time" label="上报时间" width="160" />
+        <el-table-column label="上报时间" width="160">
+          <template #default="{ row }">
+            {{ formatDateTime(row.report_time) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="viewDetail(row)">详情</el-button>
-            <!-- 只有管理员可以审核 -->
-            <el-button 
-              v-if="isAdmin && row.status === 'pending'" 
-              size="small" 
-              type="success"
-              @click="approveReport(row)"
-            >
-              审核
-            </el-button>
-            <!-- 农户只能删除自己待审核的报告 -->
-            <el-button 
-              v-if="isFarmer && row.status === 'pending'" 
-              size="small" 
-              type="danger"
-              @click="deleteReport(row)"
-            >
-              删除
-            </el-button>
+            <div style="display: flex; align-items: center;">
+              <!-- 只有管理员可以审核 -->
+              <el-button 
+                v-if="isAdmin && row.status === 'pending'" 
+                size="small" 
+                type="success"
+                @click="approveReport(row)"
+                style="margin-right: 8px;"
+              >
+                审核
+              </el-button>
+              <!-- 查看详情按钮（仅农户可见） -->
+              <el-button 
+                v-if="isFarmer"
+                size="small" 
+                type="primary"
+                @click="viewDetail(row)"
+                style="margin-right: 8px;"
+              >
+                查看详情
+              </el-button>
+              <!-- 农户只能删除自己待审核的报告 -->
+              <el-button 
+                v-if="isFarmer && row.status === 'pending' && row.user_id === userStore.user.id" 
+                size="small" 
+                type="danger"
+                @click="deleteReport(row)"
+              >
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -165,13 +188,14 @@
     <el-dialog
       v-model="showReportDialog"
       title="上报损失"
-      width="700px"
+      width="80%"
+      center
     >
-      <el-form :model="reportForm" label-width="100px">
-        <el-row :gutter="20">
+      <el-form :model="reportForm" label-width="120px" style="padding: 20px 0;">
+        <el-row :gutter="24">
           <el-col :span="12">
             <el-form-item label="灾害类型">
-              <el-select v-model="reportForm.disaster_type" placeholder="选择灾害类型">
+              <el-select v-model="reportForm.disaster_type" placeholder="选择灾害类型" style="width: 100%;">
                 <el-option label="洪涝" value="flood" />
                 <el-option label="干旱" value="drought" />
                 <el-option label="冰雹" value="hail" />
@@ -182,43 +206,49 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="作物类型">
-              <el-input v-model="reportForm.crop_type" placeholder="如：小麦、水稻" />
+              <el-input v-model="reportForm.crop_type" placeholder="如：小麦、水稻" style="width: 100%;" />
             </el-form-item>
           </el-col>
         </el-row>
 
         <el-form-item label="受灾地块">
-          <el-input v-model="reportForm.location" placeholder="输入地块位置" />
+          <el-input v-model="reportForm.location" placeholder="输入地块位置" style="width: 100%;" />
         </el-form-item>
 
-        <el-row :gutter="20">
+        <el-row :gutter="24">
           <el-col :span="12">
             <el-form-item label="地块面积">
-              <el-input-number 
-                v-model="reportForm.total_area" 
-                :min="0.1" 
-                :step="0.1"
-                placeholder="亩"
-              />
-              <span style="margin-left: 8px;">亩</span>
+              <div style="display: flex; align-items: center;">
+                <el-input-number 
+                  v-model="reportForm.total_area" 
+                  :min="0.1" 
+                  :step="0.1"
+                  placeholder="亩"
+                  style="flex: 1;"
+                />
+                <span style="margin-left: 12px; color: #606266;">亩</span>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="损失面积">
-              <el-input-number 
-                v-model="reportForm.loss_area" 
-                :min="0.1" 
-                :step="0.1"
-                :max="reportForm.total_area"
-                placeholder="亩"
-              />
-              <span style="margin-left: 8px;">亩</span>
+              <div style="display: flex; align-items: center;">
+                <el-input-number 
+                  v-model="reportForm.loss_area" 
+                  :min="0.1" 
+                  :step="0.1"
+                  :max="reportForm.total_area"
+                  placeholder="亩"
+                  style="flex: 1;"
+                />
+                <span style="margin-left: 12px; color: #606266;">亩</span>
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
 
         <el-form-item label="损失程度">
-          <div style="display: flex; align-items: center; gap: 16px; width: 100%;">
+          <div style="display: flex; align-items: center; gap: 20px; width: 100%;">
             <el-slider 
               v-model="reportForm.loss_rate" 
               :marks="{ 0: '0%', 25: '25%', 50: '50%', 75: '75%', 100: '100%' }"
@@ -228,29 +258,32 @@
               v-model="reportForm.loss_rate" 
               :min="0" 
               :max="100"
-              style="width: 120px;"
+              style="width: 140px;"
             />
-            <span>%</span>
+            <span style="color: #606266;">%</span>
           </div>
         </el-form-item>
 
         <el-form-item label="预估损失">
-          <el-input-number 
-            v-model="reportForm.loss_amount" 
-            :min="0" 
-            :step="100"
-            placeholder="元"
-            style="width: 200px;"
-          />
-          <span style="margin-left: 8px;">元</span>
+          <div style="display: flex; align-items: center;">
+            <el-input-number 
+              v-model="reportForm.loss_amount" 
+              :min="0" 
+              :step="100"
+              placeholder="元"
+              style="flex: 1; max-width: 300px;"
+            />
+            <span style="margin-left: 12px; color: #606266;">元</span>
+          </div>
         </el-form-item>
 
         <el-form-item label="损失描述">
           <el-input 
             v-model="reportForm.description" 
             type="textarea" 
-            :rows="4"
+            :rows="5"
             placeholder="详细描述受灾情况、损失详情等"
+            style="width: 100%;"
           />
         </el-form-item>
 
@@ -266,16 +299,20 @@
             list-type="picture-card"
             accept="image/*"
             :limit="3"
+            style="margin-bottom: 16px;"
           >
-            <el-icon><Plus /></el-icon>
+            <div style="width: 100px; height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px dashed #d9d9d9; border-radius: 8px; transition: all 0.3s;">
+              <el-icon style="font-size: 24px; color: #c0c4cc;"><Plus /></el-icon>
+              <span style="margin-top: 8px; font-size: 14px; color: #909399;">上传图片</span>
+            </div>
           </el-upload>
-          <div class="upload-tip">最多上传3张照片，支持 JPG、PNG、GIF 格式</div>
+          <div class="upload-tip" style="font-size: 14px; color: #909399;">最多上传3张照片，支持 JPG、PNG、GIF 格式，每张不超过5MB</div>
         </el-form-item>
       </el-form>
 
       <template #footer>
         <el-button @click="showReportDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitReport" :loading="reportLoading">
+        <el-button type="primary" @click="submitReport" :loading="reportLoading" size="large">
           提交上报
         </el-button>
       </template>
@@ -286,89 +323,127 @@
       v-model="showApproveDialog"
       title="审核损失上报"
       width="600px"
+      center
     >
       <div v-if="currentReport" class="approve-content">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="上报人">{{ currentReport.reporter }}</el-descriptions-item>
-          <el-descriptions-item label="灾害类型">
-            <el-tag :type="getDisasterTypeTag(currentReport.disaster_type)" size="small">
-              {{ getDisasterTypeName(currentReport.disaster_type) }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="受灾地块">{{ currentReport.location }}</el-descriptions-item>
-          <el-descriptions-item label="作物类型">{{ currentReport.crop_type }}</el-descriptions-item>
-          <el-descriptions-item label="地块面积">{{ currentReport.total_area }} 亩</el-descriptions-item>
-          <el-descriptions-item label="损失面积">{{ currentReport.loss_area }} 亩</el-descriptions-item>
-          <el-descriptions-item label="损失程度">{{ currentReport.loss_rate }}%</el-descriptions-item>
-          <el-descriptions-item label="损失金额">
-            <span style="color: #f56c6c; font-weight: 500;">
-              ¥{{ currentReport.loss_amount.toLocaleString() }}
-            </span>
-          </el-descriptions-item>
-          <el-descriptions-item label="上报时间" :span="2">
-            {{ currentReport.report_time }}
-          </el-descriptions-item>
-          <el-descriptions-item label="损失描述" :span="2">
-            {{ currentReport.description }}
-          </el-descriptions-item>
-        </el-descriptions>
+        <div style="padding: 24px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+          <!-- 基本信息卡片 -->
+          <el-card shadow="hover" style="margin-bottom: 20px; border-radius: 8px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div>
+                <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">上报人：</strong><span style="color: #303133;">{{ currentReport.reporter }}</span></p>
+                <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">灾害类型：</strong>
+                  <el-tag :type="getDisasterTypeTag(currentReport.disaster_type)" size="small" style="margin-left: 4px; font-weight: 500;">
+                    {{ getDisasterTypeName(currentReport.disaster_type) }}
+                  </el-tag>
+                </p>
+                <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">受灾地块：</strong><span style="color: #303133;">{{ currentReport.location }}</span></p>
+                <p style="margin: 0;"><strong style="color: #409eff;">作物类型：</strong><span style="color: #303133;">{{ currentReport.crop_type }}</span></p>
+              </div>
+              <div>
+                <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">地块面积：</strong><span style="color: #303133;">{{ currentReport.total_area }} 亩</span></p>
+                <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">损失面积：</strong><span style="color: #303133;">{{ currentReport.loss_area }} 亩</span></p>
+                <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">损失程度：</strong>
+                  <el-progress 
+                    :percentage="currentReport.loss_rate" 
+                    :color="getLossColor(currentReport.loss_rate)"
+                    :stroke-width="8"
+                    style="width: 120px; display: inline-block; margin-left: 4px;"
+                  />
+                </p>
+                <p style="margin: 0;"><strong style="color: #409eff;">损失金额：</strong><span style="color: #f56c6c; font-weight: 500; font-size: 16px;">¥{{ currentReport.loss_amount.toLocaleString() }}</span></p>
+              </div>
+            </div>
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e4e7ed;">
+              <p style="margin: 0 0 4px 0;"><strong style="color: #409eff;">状态：</strong>
+                <el-tag :type="getStatusTag(currentReport.status)" size="small">{{ getStatusName(currentReport.status) }}</el-tag>
+              </p>
+              <p style="margin: 0;"><strong style="color: #409eff;">上报时间：</strong><span style="color: #303133;">{{ formatDateTime(currentReport.report_time) }}</span></p>
+            </div>
+          </el-card>
 
-        <!-- 调试信息 -->
-        <div style="margin-top: 10px; padding: 10px; background: #f0f0f0; font-size: 12px;">
-          <div>调试信息：</div>
-          <div>images存在: {{ !!currentReport.images }}</div>
-          <div>images类型: {{ typeof currentReport.images }}</div>
-          <div>是否为数组: {{ Array.isArray(currentReport.images) }}</div>
-          <div>images长度: {{ currentReport.images ? currentReport.images.length : 'N/A' }}</div>
-          <div>images内容: {{ JSON.stringify(currentReport.images) }}</div>
+          <!-- 损失描述卡片 -->
+          <el-card shadow="hover" style="margin-bottom: 20px; border-radius: 8px;">
+            <template #header>
+              <div style="font-size: 16px; font-weight: 600; color: #303133; display: flex; align-items: center;">
+                <el-icon style="margin-right: 8px; color: #409eff;"><Document /></el-icon>
+                损失描述
+              </div>
+            </template>
+            <div style="padding: 16px; background: #f8f9fa; border-radius: 6px; min-height: 100px;">
+              <p style="margin: 0; color: #303133; line-height: 1.6;">{{ currentReport.description || '无' }}</p>
+            </div>
+          </el-card>
+
+          <!-- 现场照片卡片 -->
+          <el-card shadow="hover" style="margin-bottom: 20px; border-radius: 8px;">
+            <template #header>
+              <div style="font-size: 16px; font-weight: 600; color: #303133; display: flex; align-items: center;">
+                <el-icon style="margin-right: 8px; color: #409eff;"><Picture /></el-icon>
+                现场照片
+              </div>
+            </template>
+            <div v-if="currentReport.images && currentReport.images.length > 0" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 10px;">
+              <div v-for="(img, index) in currentReport.images" :key="index" style="position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); transition: all 0.3s ease; transform: translateY(0);">
+                <div @click="previewImage(index)" style="cursor: pointer;">
+                  <img 
+                    :src="img" 
+                    fit="cover"
+                    style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px;"
+                  />
+                </div>
+                <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.7)); color: white; padding: 6px; font-size: 11px; text-align: center;">
+                  点击查看大图
+                </div>
+                <div style="position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px;">
+                  {{ index + 1 }}/{{ currentReport.images.length }}
+                </div>
+              </div>
+            </div>
+            
+            <!-- 如果没有图片，显示提示 -->
+            <div v-else style="padding: 40px; text-align: center; background: #f8f9fa; border-radius: 6px;">
+              <el-empty description="暂无照片" :image-size="60" />
+            </div>
+          </el-card>
+
+          <!-- 审核表单 -->
+          <el-card shadow="hover" style="border-radius: 8px; border-left: 4px solid #409eff;">
+            <template #header>
+              <div style="font-size: 16px; font-weight: 600; color: #303133; display: flex; align-items: center;">
+                <el-icon style="margin-right: 8px; color: #409eff;"><Check /></el-icon>
+                审核信息
+              </div>
+            </template>
+            <el-form :model="approveForm" label-width="100px">
+              <el-form-item label="审核结果">
+                <el-radio-group v-model="approveForm.result" size="large">
+                  <el-radio value="approved" style="margin-right: 20px;">
+                    <span style="color: #67c23a; font-weight: 500;">通过</span>
+                  </el-radio>
+                  <el-radio value="rejected">
+                    <span style="color: #f56c6c; font-weight: 500;">驳回</span>
+                  </el-radio>
+                </el-radio-group>
+              </el-form-item>
+
+              <el-form-item label="审核意见">
+                <el-input 
+                  v-model="approveForm.comment" 
+                  type="textarea" 
+                  :rows="3"
+                  placeholder="请填写详细的审核意见..."
+                  style="width: 100%; border-radius: 6px;"
+                />
+              </el-form-item>
+            </el-form>
+          </el-card>
         </div>
-
-        <!-- 现场照片 -->
-        <div v-if="currentReport.images && currentReport.images.length > 0" style="margin-top: 20px;">
-          <el-divider content-position="left">现场照片</el-divider>
-          <div class="image-gallery">
-            <el-image 
-              v-for="(img, index) in currentReport.images" 
-              :key="index"
-              :src="img" 
-              :preview-src-list="currentReport.images"
-              :initial-index="index"
-              fit="cover"
-              class="gallery-image"
-            />
-          </div>
-        </div>
-        
-        <!-- 如果没有图片，显示提示 -->
-        <div v-else style="margin-top: 20px;">
-          <el-divider content-position="left">现场照片</el-divider>
-          <el-empty description="暂无照片" :image-size="80" />
-        </div>
-
-        <el-divider />
-
-        <el-form :model="approveForm" label-width="100px">
-          <el-form-item label="审核结果">
-            <el-radio-group v-model="approveForm.result">
-              <el-radio value="approved">通过</el-radio>
-              <el-radio value="rejected">驳回</el-radio>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item label="审核意见">
-            <el-input 
-              v-model="approveForm.comment" 
-              type="textarea" 
-              :rows="3"
-              placeholder="填写审核意见"
-            />
-          </el-form-item>
-        </el-form>
       </div>
 
       <template #footer>
-        <el-button @click="showApproveDialog = false">取消</el-button>
-        <el-button type="primary" @click="confirmApprove">
+        <el-button @click="showApproveDialog = false" style="border-radius: 6px;">取消</el-button>
+        <el-button type="primary" @click="confirmApprove" style="border-radius: 6px; padding: 0 24px;">
           确认审核
         </el-button>
       </template>
@@ -377,7 +452,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   DocumentAdd,
@@ -408,6 +483,8 @@ const useMockData = ref(false)
 // 响应式数据
 const showReportDialog = ref(false)
 const showApproveDialog = ref(false)
+const showImageViewer = ref(false)
+const imageViewerIndex = ref(0)
 const reportLoading = ref(false)
 const statusFilter = ref('all')
 const disasterFilter = ref('all')
@@ -459,8 +536,10 @@ const filteredReports = computed(() => {
 
 // 加载数据（优先使用API，失败则使用模拟数据）
 const loadData = async () => {
+  console.log('开始加载loss报告数据...')
   try {
     // 尝试从API加载数据
+    console.log('调用getLossReports API...')
     const [reportsRes, statsRes] = await Promise.all([
       getLossReports({
         status: statusFilter.value === 'all' ? undefined : statusFilter.value,
@@ -469,8 +548,27 @@ const loadData = async () => {
       getLossStatistics()
     ])
 
+    console.log('API调用成功:', reportsRes, statsRes)
     if (reportsRes.code === 200) {
-      reports.value = reportsRes.data
+      // 处理images字段，确保它是数组格式
+      const processedReports = reportsRes.data.map(report => {
+        if (report.images) {
+          // 确保images是数组
+          if (!Array.isArray(report.images)) {
+            try {
+              // 尝试解析JSON字符串
+              report.images = JSON.parse(report.images)
+            } catch (e) {
+              // 如果解析失败，设置为空数组
+              report.images = []
+            }
+          }
+        } else {
+          report.images = []
+        }
+        return report
+      })
+      reports.value = processedReports
       useMockData.value = false
     }
 
@@ -478,7 +576,7 @@ const loadData = async () => {
       statistics.value = statsRes.data
     }
   } catch (error) {
-    console.warn('API加载失败，使用模拟数据:', error)
+    console.error('API加载失败，使用模拟数据:', error)
     useMockData.value = true
     initMockData()
   }
@@ -786,35 +884,145 @@ const submitReport = async () => {
   }
 }
 
-// 查看详情（简化版，不显示图片）
+// 查看详情（显示图片）
 const viewDetail = (report) => {
+  // 处理images字段，确保它是数组格式
+  if (report.images) {
+    // 确保images是数组
+    if (!Array.isArray(report.images)) {
+      try {
+        // 尝试解析JSON字符串
+        report.images = JSON.parse(report.images)
+      } catch (e) {
+        // 如果解析失败，设置为空数组
+        report.images = []
+      }
+    }
+  } else {
+    report.images = []
+  }
+  
+  // 保存当前报告到currentReport，用于图片预览
+  currentReport.value = report
+
   ElMessageBox.alert(
     `
-      <div style="padding: 10px; line-height: 1.8;">
-        <p><strong>上报人：</strong>${report.reporter}</p>
-        <p><strong>灾害类型：</strong>${getDisasterTypeName(report.disaster_type)}</p>
-        <p><strong>受灾地块：</strong>${report.location}</p>
-        <p><strong>作物类型：</strong>${report.crop_type}</p>
-        <p><strong>地块面积：</strong>${report.total_area} 亩</p>
-        <p><strong>损失面积：</strong>${report.loss_area} 亩</p>
-        <p><strong>损失程度：</strong>${report.loss_rate}%</p>
-        <p><strong>损失金额：</strong><span style="color: #f56c6c; font-weight: 500;">¥${report.loss_amount.toLocaleString()}</span></p>
-        <p><strong>状态：</strong>${getStatusName(report.status)}</p>
-        <p><strong>上报时间：</strong>${report.report_time}</p>
-        <p><strong>损失描述：</strong>${report.description}</p>
-        ${report.images && report.images.length > 0 ? `<p><strong>现场照片：</strong>${report.images.length} 张（点击"审核"查看）</p>` : '<p><strong>现场照片：</strong>无</p>'}
+      <div style="padding: 24px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+        <!-- 基本信息卡片 -->
+        <div style="margin-bottom: 20px; border-radius: 8px; background: white; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1); padding: 20px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div>
+              <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">上报人：</strong><span style="color: #303133;">${report.reporter}</span></p>
+              <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">灾害类型：</strong>
+                <span style="color: #303133;">${getDisasterTypeName(report.disaster_type)}</span>
+              </p>
+              <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">受灾地块：</strong><span style="color: #303133;">${report.location}</span></p>
+              <p style="margin: 0;"><strong style="color: #409eff;">作物类型：</strong><span style="color: #303133;">${report.crop_type}</span></p>
+            </div>
+            <div>
+              <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">地块面积：</strong><span style="color: #303133;">${report.total_area} 亩</span></p>
+              <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">损失面积：</strong><span style="color: #303133;">${report.loss_area} 亩</span></p>
+              <p style="margin: 0 0 8px 0;"><strong style="color: #409eff;">损失程度：</strong><span style="color: #303133;">${report.loss_rate}%</span></p>
+              <p style="margin: 0;"><strong style="color: #409eff;">损失金额：</strong><span style="color: #f56c6c; font-weight: 500; font-size: 16px;">¥${report.loss_amount.toLocaleString()}</span></p>
+            </div>
+          </div>
+          <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e4e7ed;">
+            <p style="margin: 0 0 4px 0;"><strong style="color: #409eff;">状态：</strong>
+              <span style="color: #303133;">${getStatusName(report.status)}</span>
+            </p>
+            <p style="margin: 0;"><strong style="color: #409eff;">上报时间：</strong><span style="color: #303133;">${formatDateTime(report.report_time)}</span></p>
+          </div>
+        </div>
+
+        <!-- 损失描述卡片 -->
+        <div style="margin-bottom: 20px; border-radius: 8px; background: white; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1); padding: 20px;">
+          <div style="font-size: 16px; font-weight: 600; color: #303133; display: flex; align-items: center; margin-bottom: 16px;">
+            <span style="margin-right: 8px; color: #409eff;">📄</span>
+            损失描述
+          </div>
+          <div style="padding: 16px; background: #f8f9fa; border-radius: 6px; min-height: 100px;">
+            <p style="margin: 0; color: #303133; line-height: 1.6;">${report.description || '无'}</p>
+          </div>
+        </div>
+
+        <!-- 现场照片卡片 -->
+        <div style="margin-bottom: 20px; border-radius: 8px; background: white; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1); padding: 20px;">
+          <div style="font-size: 16px; font-weight: 600; color: #303133; display: flex; align-items: center; margin-bottom: 16px;">
+            <span style="margin-right: 8px; color: #409eff;">🖼️</span>
+            现场照片
+          </div>
+          ${report.images && report.images.length > 0 ? `
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 10px;">
+              ${report.images.map((img, index) => `
+                <div style="position: relative; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); transition: all 0.3s ease; transform: translateY(0);">
+                  <img src="${img}" style="width: 100%; height: 120px; object-fit: cover; cursor: pointer; border-radius: 8px;" onclick="document.dispatchEvent(new CustomEvent('preview-image', { detail: ${index} }))">
+                  <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.7)); color: white; padding: 6px; font-size: 11px; text-align: center;">
+                    点击查看大图
+                  </div>
+                  <div style="position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px;">
+                    ${index + 1}/${report.images.length}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div style="padding: 40px; text-align: center; background: #f8f9fa; border-radius: 6px;">
+              <p style="color: #909399; margin: 0;">暂无照片</p>
+            </div>
+          `}
+        </div>
       </div>
     `,
     '损失详情',
     {
       dangerouslyUseHTMLString: true,
-      confirmButtonText: '关闭'
+      confirmButtonText: '关闭',
+      customClass: 'detail-dialog',
+      width: '80%',
+      center: true,
+      beforeClose: (action, instance, done) => {
+        // 关闭对话框时隐藏图片预览
+        showImageViewer.value = false
+        // 允许对话框关闭
+        done()
+      }
     }
   )
+  
+  // 监听图片预览事件
+  const handlePreviewImage = (event) => {
+    if (currentReport.value && currentReport.value.images) {
+      imageViewerIndex.value = event.detail
+      showImageViewer.value = true
+    }
+  }
+  
+  document.addEventListener('preview-image', handlePreviewImage)
+  
+  // 清理事件监听器
+  setTimeout(() => {
+    document.removeEventListener('preview-image', handlePreviewImage)
+  }, 5000)
 }
 
 // 审核上报
 const approveReport = (report) => {
+  // 处理images字段，确保它是数组格式
+  if (report.images) {
+    // 确保images是数组
+    if (!Array.isArray(report.images)) {
+      try {
+        // 尝试解析JSON字符串
+        report.images = JSON.parse(report.images)
+      } catch (e) {
+        // 如果解析失败，设置为空数组
+        report.images = []
+      }
+    }
+  } else {
+    report.images = []
+  }
+  
   currentReport.value = report
   approveForm.result = 'approved'
   approveForm.comment = ''
@@ -950,6 +1158,37 @@ const getLossColor = (rate) => {
   return '#f56c6c'
 }
 
+// 格式化日期时间
+const formatDateTime = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
+}
+
+// 预览图片
+const previewImage = (index) => {
+  if (currentReport.value && currentReport.value.images && currentReport.value.images.length > 0) {
+    imageViewerIndex.value = index
+    showImageViewer.value = true
+  }
+}
+
+// 监听新通知事件
+const handleNewNotification = (notification) => {
+  // 只处理损失报告类型的通知
+  if (notification.type === 'loss_report') {
+    console.log('收到损失报告通知，刷新列表数据')
+    if (!useMockData.value) {
+      loadData()
+    }
+  }
+}
+
 // 监听筛选条件变化
 watch([statusFilter, disasterFilter], () => {
   if (!useMockData.value) {
@@ -960,6 +1199,17 @@ watch([statusFilter, disasterFilter], () => {
 // 初始化
 onMounted(() => {
   loadData()
+  // 监听全局通知事件
+  window.addEventListener('new-notification', (event) => {
+    handleNewNotification(event.detail)
+  })
+})
+
+// 组件卸载时移除事件监听
+onUnmounted(() => {
+  window.removeEventListener('new-notification', (event) => {
+    handleNewNotification(event.detail)
+  })
 })
 </script>
 

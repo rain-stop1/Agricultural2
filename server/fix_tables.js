@@ -130,6 +130,7 @@ async function fixTables() {
     await sequelize.query(`
       CREATE TABLE loss_reports (
         id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL COMMENT '用户ID',
         reporter VARCHAR(100) NOT NULL COMMENT '上报人',
         disaster_type VARCHAR(50) NOT NULL COMMENT '灾害类型',
         location VARCHAR(200) NOT NULL COMMENT '受灾地块',

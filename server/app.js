@@ -132,7 +132,15 @@ const startServer = async () => {
     await sequelize.authenticate()
     console.log('数据库连接成功')
     
-    // 手动创建notifications表
+    // 同步数据库模型
+    try {
+      await sequelize.sync({ alter: true })
+      console.log('数据库模型同步成功')
+    } catch (syncError) {
+      console.error('数据库模型同步失败:', syncError.message)
+    }
+    
+    // 手动创建notifications表（如果sync失败时的备用方案）
     try {
       const createTableSQL = "CREATE TABLE IF NOT EXISTS `notifications` (`id` INT NOT NULL AUTO_INCREMENT, `title` VARCHAR(100) NOT NULL COMMENT '通知标题', `content` TEXT NOT NULL COMMENT '通知内容', `type` VARCHAR(20) NOT NULL DEFAULT 'info' COMMENT '通知类型：info, success, warning, error', `user_id` INT NULL COMMENT '接收用户ID，null表示所有管理员', `read_status` BOOLEAN NOT NULL DEFAULT FALSE COMMENT '阅读状态', `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), INDEX `idx_user_id` (`user_id`), INDEX `idx_read_status` (`read_status`), INDEX `idx_created_at` (`created_at`), CONSTRAINT `fk_notifications_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统通知表'"
       await sequelize.query(createTableSQL)

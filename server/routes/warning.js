@@ -35,30 +35,57 @@ router.get('/', [
   query('page').optional().isInt({ min: 1 }).withMessage('页码必须是正整数'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('每页数量必须在1-100之间'),
   query('region').optional().isLength({ max: 100 }).withMessage('区域名称不能超过100个字符'),
+  query('regions').optional().isLength({ max: 1000 }).withMessage('多个区域名称不能超过1000个字符'),
   query('level').optional().isIn(['light', 'moderate', 'severe']).withMessage('预警等级不正确'),
+  query('latestBatch').optional().isBoolean().withMessage('是否只获取最新批序'),
+  // 暂时注释掉source字段的验证，因为数据库中可能还没有这个字段
+  // query('source').optional().isIn(['meteorological_bureau', 'threshold']).withMessage('预警来源不正确'),
   query('status').optional().isIn(['active', 'expired', 'cancelled']).withMessage('状态不正确')
 ], handleValidationErrors, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1
     const limit = parseInt(req.query.limit) || 10
     const offset = (page - 1) * limit
+    const latestBatch = req.query.latestBatch === 'true' || req.query.latestBatch === true
 
     // 构建查询条件
     const whereClause = {}
     
     if (req.query.region) {
       whereClause.region = { [require('sequelize').Op.like]: `%${req.query.region}%` }
+    } else if (req.query.regions) {
+      const regions = req.query.regions.split(',').map(r => r.trim())
+      if (regions.length > 0) {
+        // 使用模糊匹配，只要region包含任一城市名即可
+        whereClause[require('sequelize').Op.or] = regions.map(region => ({
+          region: { [require('sequelize').Op.like]: `%${region}%` }
+        }))
+      }
     }
     
     if (req.query.level) {
       whereClause.warning_level = req.query.level
     }
     
+    // 暂时注释掉source字段的筛选，因为数据库中可能还没有这个字段
+    // if (req.query.source) {
+    //   whereClause.source = req.query.source
+    // }
+    
     if (req.query.status) {
       whereClause.status = req.query.status
     } else {
       // 默认只返回有效预警
       whereClause.status = 'active'
+    }
+
+    // 如果需要获取最新批序的预警
+    if (latestBatch) {
+      // 获取最大批序
+      const maxBatch = await WarningRecord.max('batch_order')
+      if (maxBatch) {
+        whereClause.batch_order = maxBatch
+      }
     }
 
     const { count, rows: warnings } = await WarningRecord.findAndCountAll({
@@ -345,6 +372,18 @@ router.post('/auto-detect', [
   try {
     const detectedWarnings = []
 
+    // 获取当前最大批序
+    let currentBatchOrder = 1
+    try {
+      const maxBatch = await WarningRecord.max('batch_order')
+      if (maxBatch) {
+        currentBatchOrder = maxBatch + 1
+      }
+      console.log(`当前批序: ${currentBatchOrder}`)
+    } catch (error) {
+      console.error('获取批序失败:', error.message)
+    }
+
     // 获取最近的气象数据（过去24小时）
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
     
@@ -398,6 +437,9 @@ router.post('/auto-detect', [
         })
 
         if (!existingWarning) {
+          // 添加预警来源和批序
+          warningData.source = 'threshold'
+          warningData.batch_order = currentBatchOrder
           const createdWarning = await WarningRecord.create(warningData)
           
           // 获取完整的预警信息
@@ -411,6 +453,8 @@ router.post('/auto-detect', [
             ]
           })
           
+          // 添加来源信息
+          fullWarning.source = 'threshold'
           createdWarnings.push(fullWarning)
         }
       } catch (error) {
@@ -424,11 +468,130 @@ router.post('/auto-detect', [
       data: {
         warnings: createdWarnings,
         totalDetected: detectedWarnings.length,
-        totalCreated: createdWarnings.length
+        totalCreated: createdWarnings.length,
+        batchOrder: currentBatchOrder
       }
     })
   } catch (error) {
     console.error('智能预警检测错误:', error)
+    res.status(500).json({
+      code: 500,
+      message: '服务器内部错误'
+    })
+  }
+})
+
+// 获取气象局发布的灾害预警
+router.post('/meteorological-alerts', [
+  optionalAuth
+], async (req, res) => {
+  try {
+    const weatherService = require('../services/weatherService')
+    const { DisasterType, WarningRecord } = require('../models')
+    
+    // 获取当前最大批序
+    let currentBatchOrder = 1
+    try {
+      const maxBatch = await WarningRecord.max('batch_order')
+      if (maxBatch) {
+        currentBatchOrder = maxBatch + 1
+      }
+      console.log(`当前批序: ${currentBatchOrder}`)
+    } catch (error) {
+      console.error('获取批序失败:', error.message)
+    }
+    
+    // 获取所有支持的城市
+    const cities = weatherService.getSupportedCities()
+    const createdWarnings = []
+    
+    // 遍历每个城市获取气象局预警
+    for (const city of cities) {
+      try {
+        // 获取气象局预警
+        const alerts = await weatherService.getMeteorologicalAlerts(city.code)
+        
+        for (const alert of alerts) {
+          // 查找对应的灾害类型
+          let disasterType = await DisasterType.findOne({
+            where: {
+              type_name: alert.type_name
+            }
+          })
+          
+          // 如果没有找到，创建新的灾害类型
+          if (!disasterType) {
+            disasterType = await DisasterType.create({
+              type_name: alert.type_name,
+              type_code: alert.type.toLowerCase(),
+              description: alert.message,
+              warning_criteria: JSON.stringify({})
+            })
+          }
+          
+          // 检查是否已存在相同的预警
+          const existingWarning = await WarningRecord.findOne({
+            where: {
+              region: alert.city,
+              disaster_type_id: disasterType.id,
+              status: 'active',
+              created_at: {
+                [require('sequelize').Op.gte]: new Date(Date.now() - 6 * 60 * 60 * 1000) // 6小时内
+              }
+            }
+          })
+          
+          if (!existingWarning) {
+            // 创建预警记录
+            const warningData = {
+              disaster_type_id: disasterType.id,
+              region: alert.city,
+              warning_level: alert.level,
+              warning_content: alert.message,
+              start_time: new Date(alert.effective_time || Date.now()),
+              end_time: alert.expire_time ? new Date(alert.expire_time) : null,
+              status: 'active',
+              batch_order: currentBatchOrder,
+              source: 'meteorological_bureau'
+            }
+            
+            const createdWarning = await WarningRecord.create(warningData)
+            
+            // 获取完整的预警信息
+            const fullWarning = await WarningRecord.findByPk(createdWarning.id, {
+              include: [
+                {
+                  model: DisasterType,
+                  as: 'disasterType',
+                  attributes: ['id', 'type_name', 'type_code']
+                }
+              ]
+            })
+            
+            // 添加来源信息
+            fullWarning.source = 'meteorological_bureau'
+            createdWarnings.push(fullWarning)
+          }
+        }
+      } catch (error) {
+        console.error(`获取${city.name}气象局预警失败:`, error)
+      }
+      
+      // 避免API调用过于频繁
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    
+    res.json({
+      code: 200,
+      message: '气象局预警获取完成',
+      data: {
+        warnings: createdWarnings,
+        totalCreated: createdWarnings.length,
+        batchOrder: currentBatchOrder
+      }
+    })
+  } catch (error) {
+    console.error('获取气象局预警错误:', error)
     res.status(500).json({
       code: 500,
       message: '服务器内部错误'

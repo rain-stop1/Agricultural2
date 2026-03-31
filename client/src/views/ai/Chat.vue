@@ -69,7 +69,7 @@ import { aiApi } from '@/api/ai'
 const messages = ref([
   {
     role: 'ai',
-    content: '你好！我是农业灾害预警系统的AI助手，有什么可以帮助你的吗？',
+    content: '你好！我是农业灾害预警与应急响应系统的AI助手，有什么可以帮助你的吗？',
     timestamp: new Date().toLocaleTimeString()
   }
 ])
@@ -113,7 +113,7 @@ const clearChat = () => {
   messages.value = [
     {
       role: 'ai',
-      content: '你好！我是农业灾害预警系统的AI助手，有什么可以帮助你的吗？',
+      content: '你好！我是农业灾害预警与应急响应系统的AI助手，有什么可以帮助你的吗？',
       timestamp: new Date().toLocaleTimeString()
     }
   ]

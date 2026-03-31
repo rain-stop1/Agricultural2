@@ -27,7 +27,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     crop_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       comment: '作物ID'
     },
     planting_date: {

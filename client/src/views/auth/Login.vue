@@ -2,8 +2,8 @@
   <div class="login-container">
     <div class="login-card">
       <div class="login-header">
-        <h2>农业灾害预警系统</h2>
-        <p> Agricultural Disaster Warning System</p>
+        <h2>农业灾害预警与应急响应系统</h2>
+        <p> Agricultural Disaster Warning and Emergency Response System</p>
       </div>
       
       <el-form
@@ -12,17 +12,19 @@
         :rules="loginRules"
         class="login-form"
       >
-        <el-form-item prop="username">
+        <el-form-item prop="username" :error="loginErrors.username">
           <el-input
             v-model="loginForm.username"
             placeholder="请输入用户名"
             size="large"
             prefix-icon="User"
             clearable
+            @input="loginErrors.username = ''"
+            @focus="loginErrors.username = ''"
           />
         </el-form-item>
         
-        <el-form-item prop="password">
+        <el-form-item prop="password" :error="loginErrors.password">
           <el-input
             v-model="loginForm.password"
             type="password"
@@ -31,6 +33,8 @@
             prefix-icon="Lock"
             show-password
             clearable
+            @input="loginErrors.password = ''"
+            @focus="loginErrors.password = ''"
             @keyup.enter="handleLogin"
           />
         </el-form-item>
@@ -61,11 +65,13 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const loginFormRef = ref()
 
@@ -77,6 +83,12 @@ const loginForm = reactive({
 
 // 记住密码
 const rememberMe = ref(false)
+
+// 登录错误信息
+const loginErrors = reactive({
+  username: '',
+  password: ''
+})
 
 // 表单验证规则
 const loginRules = {
@@ -98,8 +110,12 @@ const handleLogin = async () => {
     const valid = await loginFormRef.value.validate()
     if (!valid) return
     
-    const success = await userStore.login(loginForm)
-    if (success) {
+    // 清空之前的错误
+    loginErrors.username = ''
+    loginErrors.password = ''
+    
+    const result = await userStore.login(loginForm)
+    if (result.success) {
       // 如果记住密码，保存到localStorage
       if (rememberMe.value) {
         localStorage.setItem('rememberedUsername', loginForm.username)
@@ -108,14 +124,35 @@ const handleLogin = async () => {
       }
       
       router.push('/')
+    } else {
+      // 根据错误信息设置对应的错误提示
+      const errorMsg = result.error
+      if (errorMsg.includes('用户名或密码错误') || errorMsg.includes('用户不存在')) {
+        loginErrors.username = '用户名或密码错误'
+        loginErrors.password = '用户名或密码错误'
+      } else if (errorMsg.includes('账号已被禁用')) {
+        loginErrors.username = '账号已被禁用，请联系管理员'
+      } else {
+        // 其他错误仍然使用弹窗提示
+        ElMessage.error(errorMsg)
+      }
     }
   } catch (error) {
     console.error('登录验证错误:', error)
   }
 }
 
-// 初始化时检查是否有记住的用户名
-const initRememberedUsername = () => {
+// 初始化时检查是否有记住的用户名或从注册页面传递的参数
+const initLoginForm = () => {
+  // 优先检查从注册页面传递的参数
+  const { username, password } = route.query
+  if (username) {
+    loginForm.username = username
+    loginForm.password = password || ''
+    return
+  }
+  
+  // 检查是否有记住的用户名
   const rememberedUsername = localStorage.getItem('rememberedUsername')
   if (rememberedUsername) {
     loginForm.username = rememberedUsername
@@ -123,13 +160,16 @@ const initRememberedUsername = () => {
   }
 }
 
-initRememberedUsername()
+onMounted(() => {
+  initLoginForm()
+})
 </script>
 
 <style scoped>
 .login-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: url('/background.jpg') no-repeat center center fixed;
+  background-size: cover;
   display: flex;
   justify-content: center;
   align-items: center;

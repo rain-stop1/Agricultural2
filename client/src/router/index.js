@@ -63,10 +63,24 @@ const routes = [
         component: () => import('@/views/admin/Users.vue'),
         meta: { title: '用户管理', requiresAdmin: true }
       },
-      { path: '/admin/system', name: 'AdminSystem', component: () => import('@/views/admin/System.vue'), meta: { title: '系统管理', requiresAdmin: true } },
-      { path: '/admin/fields', name: 'AdminFields', component: () => import('@/views/admin/Fields.vue'), meta: { title: '地块管理', requiresAdmin: true } },
-      { path: '/admin/disaster-types', name: 'AdminDisasterTypes', component: () => import('@/views/admin/DisasterTypes.vue'), meta: { title: '灾害类型管理', requiresAdmin: true } },
-      { path: '/admin/reports', name: 'AdminReports', component: () => import('@/views/admin/Reports.vue'), meta: { title: '统计报表', requiresAdmin: true } },
+      {
+        path: '/admin/system',
+        name: 'AdminSystem',
+        component: () => import('@/views/admin/System.vue'),
+        meta: { title: '系统管理', requiresAdmin: true }
+      },
+      {
+        path: '/admin/fields',
+        name: 'AdminFields',
+        component: () => import('@/views/admin/Fields.vue'),
+        meta: { title: '地块管理', requiresAdmin: true }
+      },
+      {
+        path: '/admin/reports',
+        name: 'AdminReports',
+        component: () => import('@/views/admin/Reports.vue'),
+        meta: { title: '统计报表', requiresAdmin: true }
+      },
       // 普通用户地块管理
       { path: '/fields', name: 'Fields', component: () => import('@/views/fields/Index.vue'), meta: { title: '地块管理' } },
       // AI对话功能

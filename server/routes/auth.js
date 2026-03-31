@@ -50,6 +50,8 @@ const registerValidation = [
     .isEmail()
     .withMessage('请输入有效的邮箱地址'),
   body('user_type')
+    .notEmpty()
+    .withMessage('用户类型不能为空')
     .isIn(['farmer', 'admin'])
     .withMessage('用户类型必须是farmer或admin')
 ]
@@ -67,9 +69,10 @@ const generateToken = (userId, userType) => {
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) {
+    console.log('验证错误:', errors.array())
     return res.status(400).json({
       code: 400,
-      message: '数据验证失败',
+      message: '数据验证失败: ' + errors.array().map(e => e.msg).join(', '),
       errors: errors.array()
     })
   }
@@ -136,7 +139,8 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
 // 用户注册
 router.post('/register', registerValidation, handleValidationErrors, async (req, res) => {
   try {
-    const { username, password, real_name, phone, email, user_type } = req.body
+    console.log('注册请求数据:', req.body)
+    const { username, password, real_name, phone, email, user_type, region } = req.body
 
     // 检查用户名是否已存在
     const existingUser = await User.findOne({
@@ -171,7 +175,8 @@ router.post('/register', registerValidation, handleValidationErrors, async (req,
       real_name,
       phone,
       email,
-      user_type
+      user_type,
+      region
     })
 
     res.status(201).json({
@@ -374,6 +379,77 @@ router.put('/update', [
     })
   } catch (error) {
     console.error('更新用户信息错误:', error)
+    res.status(500).json({
+      code: 500,
+      message: '服务器内部错误'
+    })
+  }
+})
+
+// 更新用户资料（支持region字段）
+router.put('/update-profile', [
+  authenticateToken,
+  body('real_name')
+    .optional()
+    .isLength({ min: 2, max: 10 })
+    .withMessage('姓名长度为2-10个字符'),
+  body('phone')
+    .optional()
+    .isMobilePhone('zh-CN')
+    .withMessage('请输入有效的手机号码'),
+  body('region')
+    .optional()
+    .isString()
+    .withMessage('地区格式不正确')
+], handleValidationErrors, async (req, res) => {
+  try {
+    const { real_name, phone, region } = req.body
+    const updateData = {}
+
+    // 检查手机号是否已被其他用户使用
+    if (phone && phone !== req.user.phone) {
+      const existingPhone = await User.findOne({
+        where: { 
+          phone,
+          id: { [require('sequelize').Op.ne]: req.user.id }
+        }
+      })
+      
+      if (existingPhone) {
+        return res.status(400).json({
+          code: 400,
+          message: '手机号已被其他用户使用'
+        })
+      }
+      
+      updateData.phone = phone
+    }
+
+    if (real_name) {
+      updateData.real_name = real_name
+    }
+
+    if (region !== undefined) {
+      updateData.region = region
+    }
+
+    // 更新用户信息
+    await User.update(updateData, {
+      where: { id: req.user.id }
+    })
+
+    // 获取更新后的用户信息
+    const updatedUser = await User.findByPk(req.user.id, {
+      attributes: { exclude: ['password'] }
+    })
+
+    res.json({
+      code: 200,
+      message: '更新成功',
+      data: updatedUser
+    })
+  } catch (error) {
+    console.error('更新用户资料错误:', error)
     res.status(500).json({
       code: 500,
       message: '服务器内部错误'

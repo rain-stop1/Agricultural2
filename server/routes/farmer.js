@@ -30,26 +30,41 @@ router.get('/dashboard/stats', authenticateToken, async (req, res) => {
       where: { user_id: userId } 
     })
     
-    // 统计用户所在地区的活跃预警
+    // 统计用户地块所在地区的活跃预警
     let warningCount = 0
-    if (userRegion) {
-      // 提取省份和城市
-      const provinceMatch = userRegion.match(/([\u4e00-\u9fa5]+省)/)
-      const cityMatch = userRegion.match(/([\u4e00-\u9fa5]+市)/)
+    
+    // 获取用户的所有地块
+    const fields = await Field.findAll({
+      where: { user_id: userId },
+      attributes: ['location']
+    })
+    
+    if (fields.length > 0) {
+      const uniqueCities = new Set()
       
-      const conditions = []
-      if (provinceMatch) {
-        conditions.push({ [Op.like]: `%${provinceMatch[0]}%` })
-      }
-      if (cityMatch) {
-        conditions.push({ [Op.like]: `%${cityMatch[0]}%` })
-      }
+      // 提取每个地块位置中的城市信息
+      fields.forEach(field => {
+        if (field.location) {
+          // 从地块位置中提取城市名（优先匹配"市"）
+          const cityMatch = field.location.match(/([\u4e00-\u9fa5]+)市/)
+          if (cityMatch) {
+            // 提取城市名（不带"市"）
+            const cityName = cityMatch[1]
+            uniqueCities.add(cityName)
+          }
+        }
+      })
       
-      if (conditions.length > 0) {
+      const locationConditions = Array.from(uniqueCities).map(city => ({ [Op.like]: `%${city}%` }))
+      
+      if (locationConditions.length > 0) {
+        // 构建正确的 OR 条件
+        const orConditions = locationConditions.map(condition => ({ region: condition }))
+        
         warningCount = await WarningRecord.count({
           where: {
             status: 'active',
-            region: { [Op.or]: conditions }
+            [Op.or]: orConditions
           }
         })
       }
@@ -351,34 +366,4 @@ router.get('/crops', authenticateToken, async (req, res) => {
 })
 
 module.exports = router
-
-// 获取作物列表（农户可访问）
-router.get('/crops', authenticateToken, async (req, res) => {
-  try {
-    const { search = '' } = req.query
-
-    const where = {}
-    if (search) {
-      where.crop_name = { [Op.like]: `%${search}%` }
-    }
-
-    const crops = await Crop.findAll({
-      where,
-      attributes: ['id', 'crop_name', 'crop_type'],
-      order: [['crop_name', 'ASC']]
-    })
-
-    res.json({
-      code: 200,
-      message: '获取成功',
-      data: crops
-    })
-  } catch (error) {
-    console.error('获取作物列表失败:', error)
-    res.status(500).json({
-      code: 500,
-      message: '服务器错误: ' + error.message
-    })
-  }
-})
 

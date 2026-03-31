@@ -82,28 +82,50 @@
             <el-card class="mb-20">
               <template #header>
                 <div class="flex-between">
-                  <h4>灾害系数</h4>
-                  <el-button type="primary" size="small" @click="openDisasterDialog">
+                  <div>
+                    <h4>灾害类型管理</h4>
+                    <p class="text-gray text-small">配置灾害类型及其预警阈值条件</p>
+                  </div>
+                  <el-button type="primary" size="small" @click="openDisasterTypeDialog">
                     新增灾害类型
                   </el-button>
                 </div>
               </template>
               <el-table
-                v-loading="dataLoading"
-                :data="basicData.disasterTypes"
+                v-loading="disasterTypeLoading"
+                :data="disasterTypeList"
                 style="width: 100%"
                 border
               >
-                <el-table-column prop="id" label="ID" width="80" />
-                <el-table-column prop="name" label="灾害名称" />
-                <el-table-column prop="level" label="等级" width="100" />
-                <el-table-column prop="coefficient" label="系数" width="100" />
-                <el-table-column label="操作" width="150" fixed="right">
+                <el-table-column prop="id" label="ID" width="60" />
+                <el-table-column prop="type_name" label="灾害名称" width="120" />
+                <el-table-column prop="type_code" label="类型编码" width="100" />
+                <el-table-column prop="description" label="描述" show-overflow-tooltip />
+                <el-table-column label="预警阈值配置" min-width="300">
                   <template #default="{ row }">
-                    <el-button type="primary" size="small" @click="openDisasterDialog(row)">
+                    <div v-if="row.warning_criteria && row.warning_criteria.length > 0" class="criteria-tags">
+                      <el-tag 
+                        v-for="(criteria, index) in row.warning_criteria" 
+                        :key="index"
+                        :type="getCriteriaTagType(criteria.level)"
+                        size="small"
+                        class="criteria-tag"
+                      >
+                        {{ getCriteriaLabel(criteria) }}
+                      </el-tag>
+                    </div>
+                    <el-tag v-else type="info" size="small">未配置</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="180" fixed="right">
+                  <template #default="{ row }">
+                    <el-button type="primary" size="small" @click="openDisasterTypeDialog(row)">
                       编辑
                     </el-button>
-                    <el-button type="danger" size="small" @click="deleteDisaster(row.id)">
+                    <el-button type="success" size="small" @click="openThresholdDialog(row)">
+                      阈值
+                    </el-button>
+                    <el-button type="danger" size="small" @click="deleteDisasterType(row.id)">
                       删除
                     </el-button>
                   </template>
@@ -150,50 +172,7 @@
           </div>
         </el-tab-pane>
         
-        <el-tab-pane label="灾害类型管理" name="disaster-types">
-          <div class="disaster-types-management">
-            <el-card>
-              <template #header>
-                <div class="flex-between">
-                  <h4>灾害类型管理</h4>
-                  <el-button type="primary" @click="openCreateDialog">
-                    <el-icon><Plus /></el-icon>
-                    新增灾害类型
-                  </el-button>
-                </div>
-              </template>
-              <el-table
-                v-loading="disasterTypesLoading"
-                :data="disasterTypes"
-                style="width: 100%"
-                border
-              >
-                <el-table-column prop="id" label="ID" width="80" />
-                <el-table-column prop="type_name" label="灾害类型" />
-                <el-table-column prop="type_code" label="类型编码" width="120" />
-                <el-table-column prop="description" label="描述" />
-                <el-table-column label="操作" width="180" fixed="right">
-                  <template #default="{ row }">
-                    <el-button
-                      type="primary"
-                      size="small"
-                      @click="openEditDialog(row)"
-                    >
-                      编辑
-                    </el-button>
-                    <el-button
-                      type="danger"
-                      size="small"
-                      @click="handleDelete(row.id)"
-                    >
-                      删除
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-card>
-          </div>
-        </el-tab-pane>
+
       </el-tabs>
     </el-card>
     
@@ -231,35 +210,131 @@
     
     <!-- 灾害类型对话框 -->
     <el-dialog
-      v-model="disasterDialogVisible"
-      :title="disasterDialogType === 'create' ? '新增灾害类型' : '编辑灾害类型'"
+      v-model="disasterTypeDialogVisible"
+      :title="disasterTypeDialogType === 'create' ? '新增灾害类型' : '编辑灾害类型'"
       width="500px"
     >
       <el-form
-        :model="disasterForm"
-        :rules="disasterFormRules"
-        ref="disasterFormRef"
+        :model="disasterTypeForm"
+        :rules="disasterTypeFormRules"
+        ref="disasterTypeFormRef"
         label-width="120px"
       >
-        <el-form-item label="灾害名称" prop="name">
-          <el-input v-model="disasterForm.name" placeholder="请输入灾害名称" />
+        <el-form-item label="灾害名称" prop="type_name">
+          <el-input v-model="disasterTypeForm.type_name" placeholder="请输入灾害名称，如：暴雨、高温" />
         </el-form-item>
-        <el-form-item label="等级" prop="level">
-          <el-select v-model="disasterForm.level" placeholder="请选择等级">
-            <el-option label="轻度" value="轻度" />
-            <el-option label="中度" value="中度" />
-            <el-option label="重度" value="重度" />
-          </el-select>
+        <el-form-item label="类型编码" prop="type_code">
+          <el-input v-model="disasterTypeForm.type_code" placeholder="请输入类型编码，如：rainstorm、heat" />
         </el-form-item>
-        <el-form-item label="系数" prop="coefficient">
-          <el-input v-model.number="disasterForm.coefficient" type="number" placeholder="请输入系数" step="0.1" min="0" max="1" />
+        <el-form-item label="描述" prop="description">
+          <el-input 
+            v-model="disasterTypeForm.description" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入灾害描述" 
+          />
         </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="disasterDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="saveDisaster">
-            {{ disasterDialogType === 'create' ? '新增' : '保存' }}
+          <el-button @click="disasterTypeDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveDisasterType">
+            {{ disasterTypeDialogType === 'create' ? '新增' : '保存' }}
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+    
+    <!-- 阈值配置对话框 -->
+    <el-dialog
+      v-model="thresholdDialogVisible"
+      title="配置预警阈值"
+      width="700px"
+    >
+      <div v-if="currentDisasterType" class="threshold-dialog-content">
+        <div class="threshold-header">
+          <h4>{{ currentDisasterType.type_name }} - 预警阈值配置</h4>
+          <p class="text-gray">设置触发预警的天气条件，当条件满足时将自动生成预警</p>
+        </div>
+        
+        <div class="threshold-list">
+          <div 
+            v-for="(criteria, index) in thresholdForm.criteriaList" 
+            :key="index"
+            class="threshold-item"
+          >
+            <el-card shadow="hover">
+              <div class="threshold-item-header">
+                <span class="threshold-index">条件 {{ index + 1 }}</span>
+                <el-button type="danger" link size="small" @click="removeCriteria(index)">
+                  删除
+                </el-button>
+              </div>
+              <div class="threshold-item-content">
+                <el-row :gutter="10">
+                  <el-col :span="6">
+                    <el-select v-model="criteria.parameter" placeholder="参数">
+                      <el-option label="温度" value="temperature" />
+                      <el-option label="湿度" value="humidity" />
+                      <el-option label="降雨量" value="rainfall" />
+                      <el-option label="风速" value="wind_speed" />
+                      <el-option label="气压" value="air_pressure" />
+                    </el-select>
+                  </el-col>
+                  <el-col :span="5">
+                    <el-select v-model="criteria.operator" placeholder="运算符">
+                      <el-option label=">" value=">" />
+                      <el-option label="<" value="<" />
+                      <el-option label=">=" value=">=" />
+                      <el-option label="<=" value="<=" />
+                      <el-option label="=" value="=" />
+                    </el-select>
+                  </el-col>
+                  <el-col :span="6">
+                    <el-input-number 
+                      v-model="criteria.value" 
+                      :precision="1" 
+                      :step="0.1"
+                      placeholder="阈值"
+                      style="width: 100%"
+                    />
+                  </el-col>
+                  <el-col :span="7">
+                    <el-select v-model="criteria.level" placeholder="预警级别">
+                      <el-option label="轻度预警" value="light">
+                        <el-tag type="success" size="small">轻度</el-tag>
+                      </el-option>
+                      <el-option label="中度预警" value="moderate">
+                        <el-tag type="warning" size="small">中度</el-tag>
+                      </el-option>
+                      <el-option label="重度预警" value="severe">
+                        <el-tag type="danger" size="small">重度</el-tag>
+                      </el-option>
+                    </el-select>
+                  </el-col>
+                </el-row>
+              </div>
+            </el-card>
+          </div>
+          
+          <div v-if="thresholdForm.criteriaList.length === 0" class="empty-criteria">
+            <el-empty description="暂无阈值配置">
+              <el-button type="primary" @click="addCriteria">添加条件</el-button>
+            </el-empty>
+          </div>
+          
+          <div v-else class="add-criteria-btn">
+            <el-button type="primary" plain @click="addCriteria">
+              <el-icon><Plus /></el-icon> 添加条件
+            </el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="thresholdDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="saveThreshold">
+            保存配置
           </el-button>
         </span>
       </template>
@@ -294,140 +369,13 @@
       </template>
     </el-dialog>
     
-    <!-- 灾害类型对话框 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogType === 'create' ? '新增灾害类型' : '编辑灾害类型'"
-      width="600px"
-    >
-      <el-form
-        :model="formData"
-        :rules="formRules"
-        ref="formRef"
-        label-width="120px"
-      >
-        <el-form-item label="灾害类型" prop="type_name">
-          <el-input v-model="formData.type_name" placeholder="请输入灾害类型名称" />
-        </el-form-item>
-        <el-form-item label="类型编码" prop="type_code">
-          <el-input v-model="formData.type_code" placeholder="请输入类型编码（英文）" />
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input v-model="formData.description" type="textarea" placeholder="请输入灾害描述" :rows="3" />
-        </el-form-item>
-        <el-form-item label="预警阈值" prop="warning_criteria">
-          <el-card>
-            <template #header>
-              <div class="flex-between">
-                <h4>分级预警阈值</h4>
-                <el-button type="primary" size="small" @click="addCriteria('severe')">
-                  添加条件
-                </el-button>
-              </div>
-            </template>
-            
-            <!-- 重度预警 -->
-            <div class="criteria-section">
-              <h5 class="criteria-title">🔴 重度预警 (Severe)</h5>
-              <div v-if="formData.warning_criteria.severe.length === 0" class="empty-criteria">
-                <el-empty description="暂无条件" />
-              </div>
-              <div v-else v-for="(criteria, index) in formData.warning_criteria.severe" :key="`severe-${index}`" class="criteria-item">
-                <el-select v-model="criteria.type" placeholder="参数类型" class="mr-10">
-                  <el-option label="温度" value="temperature" />
-                  <el-option label="湿度" value="humidity" />
-                  <el-option label="降雨量" value="rainfall" />
-                  <el-option label="风速" value="wind_speed" />
-                  <el-option label="气压" value="air_pressure" />
-                </el-select>
-                <el-select v-model="criteria.operator" placeholder="运算符" class="mr-10">
-                  <el-option label="大于" value=">" />
-                  <el-option label="小于" value="<" />
-                  <el-option label="大于等于" value=">=" />
-                  <el-option label="小于等于" value="<=" />
-                  <el-option label="等于" value="=" />
-                </el-select>
-                <el-input v-model.number="criteria.value" type="number" placeholder="阈值" class="mr-10" style="width: 100px" />
-                <el-button type="danger" size="small" @click="removeCriteria('severe', index)">
-                  删除
-                </el-button>
-              </div>
-            </div>
-            
-            <!-- 中度预警 -->
-            <div class="criteria-section mt-20">
-              <h5 class="criteria-title">🟠 中度预警 (Moderate)</h5>
-              <div v-if="formData.warning_criteria.moderate.length === 0" class="empty-criteria">
-                <el-empty description="暂无条件" />
-              </div>
-              <div v-else v-for="(criteria, index) in formData.warning_criteria.moderate" :key="`moderate-${index}`" class="criteria-item">
-                <el-select v-model="criteria.type" placeholder="参数类型" class="mr-10">
-                  <el-option label="温度" value="temperature" />
-                  <el-option label="湿度" value="humidity" />
-                  <el-option label="降雨量" value="rainfall" />
-                  <el-option label="风速" value="wind_speed" />
-                  <el-option label="气压" value="air_pressure" />
-                </el-select>
-                <el-select v-model="criteria.operator" placeholder="运算符" class="mr-10">
-                  <el-option label="大于" value=">" />
-                  <el-option label="小于" value="<" />
-                  <el-option label="大于等于" value=">=" />
-                  <el-option label="小于等于" value="<=" />
-                  <el-option label="等于" value="=" />
-                </el-select>
-                <el-input v-model.number="criteria.value" type="number" placeholder="阈值" class="mr-10" style="width: 100px" />
-                <el-button type="danger" size="small" @click="removeCriteria('moderate', index)">
-                  删除
-                </el-button>
-              </div>
-            </div>
-            
-            <!-- 轻度预警 -->
-            <div class="criteria-section mt-20">
-              <h5 class="criteria-title">🟡 轻度预警 (Light)</h5>
-              <div v-if="formData.warning_criteria.light.length === 0" class="empty-criteria">
-                <el-empty description="暂无条件" />
-              </div>
-              <div v-else v-for="(criteria, index) in formData.warning_criteria.light" :key="`light-${index}`" class="criteria-item">
-                <el-select v-model="criteria.type" placeholder="参数类型" class="mr-10">
-                  <el-option label="温度" value="temperature" />
-                  <el-option label="湿度" value="humidity" />
-                  <el-option label="降雨量" value="rainfall" />
-                  <el-option label="风速" value="wind_speed" />
-                  <el-option label="气压" value="air_pressure" />
-                </el-select>
-                <el-select v-model="criteria.operator" placeholder="运算符" class="mr-10">
-                  <el-option label="大于" value=">" />
-                  <el-option label="小于" value="<" />
-                  <el-option label="大于等于" value=">=" />
-                  <el-option label="小于等于" value="<=" />
-                  <el-option label="等于" value="=" />
-                </el-select>
-                <el-input v-model.number="criteria.value" type="number" placeholder="阈值" class="mr-10" style="width: 100px" />
-                <el-button type="danger" size="small" @click="removeCriteria('light', index)">
-                  删除
-                </el-button>
-              </div>
-            </div>
-          </el-card>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="handleSubmit">
-            {{ dialogType === 'create' ? '创建' : '保存' }}
-          </el-button>
-        </span>
-      </template>
-    </el-dialog>
+
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
 import { systemApi, dataApi } from '@/api/admin'
 import { disasterTypeApi } from '@/api/disaster-types'
 
@@ -452,36 +400,35 @@ const basicData = ref({
 const dataLoading = ref(false)
 
 // 灾害类型管理
-const disasterTypes = ref([])
-const disasterTypesLoading = ref(false)
-const dialogVisible = ref(false)
-const dialogType = ref('create')
-const currentId = ref(null)
-const formRef = ref(null)
+const disasterTypeList = ref([])
+const disasterTypeLoading = ref(false)
 
-const formData = ref({
+// 灾害类型对话框
+const disasterTypeDialogVisible = ref(false)
+const disasterTypeDialogType = ref('create')
+const disasterTypeForm = ref({
+  id: null,
   type_name: '',
   type_code: '',
-  description: '',
-  warning_criteria: {
-    severe: [],
-    moderate: [],
-    light: []
-  }
+  description: ''
 })
-
-const formRules = {
+const disasterTypeFormRef = ref(null)
+const disasterTypeFormRules = {
   type_name: [
-    { required: true, message: '请输入灾害类型名称', trigger: 'blur' }
+    { required: true, message: '请输入灾害名称', trigger: 'blur' }
   ],
   type_code: [
     { required: true, message: '请输入类型编码', trigger: 'blur' },
     { pattern: /^[a-z_]+$/, message: '类型编码只能包含小写字母和下划线', trigger: 'blur' }
-  ],
-  description: [
-    { required: true, message: '请输入灾害描述', trigger: 'blur' }
   ]
 }
+
+// 阈值配置对话框
+const thresholdDialogVisible = ref(false)
+const currentDisasterType = ref(null)
+const thresholdForm = ref({
+  criteriaList: []
+})
 
 // 作物对话框
 const cropDialogVisible = ref(false)
@@ -504,29 +451,6 @@ const cropFormRules = {
   disasterCoefficient: [
     { required: true, message: '请输入灾害系数', trigger: 'blur' },
     { type: 'number', min: 0, max: 1, message: '灾害系数必须在0-1之间', trigger: 'blur' }
-  ]
-}
-
-// 灾害类型对话框
-const disasterDialogVisible = ref(false)
-const disasterDialogType = ref('create')
-const disasterForm = ref({
-  id: null,
-  name: '',
-  level: '',
-  coefficient: ''
-})
-const disasterFormRef = ref(null)
-const disasterFormRules = {
-  name: [
-    { required: true, message: '请输入灾害名称', trigger: 'blur' }
-  ],
-  level: [
-    { required: true, message: '请选择等级', trigger: 'change' }
-  ],
-  coefficient: [
-    { required: true, message: '请输入系数', trigger: 'blur' },
-    { type: 'number', min: 0, max: 1, message: '系数必须在0-1之间', trigger: 'blur' }
   ]
 }
 
@@ -678,61 +602,6 @@ const deleteCrop = (id) => {
   })
 }
 
-// 打开灾害类型对话框
-const openDisasterDialog = (disaster = null) => {
-  if (disaster) {
-    disasterDialogType.value = 'edit'
-    disasterForm.value = { ...disaster }
-  } else {
-    disasterDialogType.value = 'create'
-    disasterForm.value = {
-      id: null,
-      name: '',
-      level: '',
-      coefficient: ''
-    }
-  }
-  disasterDialogVisible.value = true
-}
-
-// 保存灾害类型
-const saveDisaster = async () => {
-  if (!disasterFormRef.value) return
-  
-  await disasterFormRef.value.validate(async (valid) => {
-    if (valid) {
-      if (disasterDialogType.value === 'create') {
-        // 生成新ID
-        const newId = Math.max(...basicData.value.disasterTypes.map(d => d.id), 0) + 1
-        disasterForm.value.id = newId
-        basicData.value.disasterTypes.push(disasterForm.value)
-      } else {
-        // 更新现有灾害类型
-        const index = basicData.value.disasterTypes.findIndex(d => d.id === disasterForm.value.id)
-        if (index !== -1) {
-          basicData.value.disasterTypes[index] = { ...disasterForm.value }
-        }
-      }
-      ElMessage.success(disasterDialogType.value === 'create' ? '新增灾害类型成功' : '更新灾害类型成功')
-      disasterDialogVisible.value = false
-    }
-  })
-}
-
-// 删除灾害类型
-const deleteDisaster = (id) => {
-  ElMessageBox.confirm('确定要删除这个灾害类型吗？', '警告', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(() => {
-    basicData.value.disasterTypes = basicData.value.disasterTypes.filter(d => d.id !== id)
-    ElMessage.success('删除灾害类型成功')
-  }).catch(() => {
-    // 取消删除
-  })
-}
-
 // 打开资产对话框
 const openAssetDialog = (asset = null) => {
   if (asset) {
@@ -787,98 +656,156 @@ const deleteAsset = (id) => {
   })
 }
 
+// 获取阈值标签类型
+const getCriteriaTagType = (level) => {
+  const typeMap = {
+    'light': 'success',
+    'moderate': 'warning',
+    'severe': 'danger'
+  }
+  return typeMap[level] || 'info'
+}
+
+// 获取阈值显示标签
+const getCriteriaLabel = (criteria) => {
+  const paramNames = {
+    'temperature': '温度',
+    'humidity': '湿度',
+    'rainfall': '降雨量',
+    'wind_speed': '风速',
+    'air_pressure': '气压'
+  }
+  const levelNames = {
+    'light': '轻度',
+    'moderate': '中度',
+    'severe': '重度'
+  }
+  const param = paramNames[criteria.parameter] || criteria.parameter
+  const level = levelNames[criteria.level] || criteria.level
+  return `${param}${criteria.operator}${criteria.value}(${level})`
+}
+
 // 加载灾害类型列表
 const loadDisasterTypes = async () => {
-  disasterTypesLoading.value = true
+  disasterTypeLoading.value = true
   try {
     const response = await disasterTypeApi.getDisasterTypes()
     if (response.code === 200) {
-      disasterTypes.value = response.data
-    }
-  } catch (error) {
-    ElMessage.error('获取灾害类型列表失败')
-  } finally {
-    disasterTypesLoading.value = false
-  }
-}
-
-// 打开创建对话框
-const openCreateDialog = () => {
-  dialogType.value = 'create'
-  currentId.value = null
-  formData.value = {
-    type_name: '',
-    type_code: '',
-    description: '',
-    warning_criteria: {
-      severe: [],
-      moderate: [],
-      light: []
-    }
-  }
-  dialogVisible.value = true
-}
-
-// 打开编辑对话框
-const openEditDialog = (disasterType) => {
-  dialogType.value = 'edit'
-  currentId.value = disasterType.id
-  formData.value = {
-    type_name: disasterType.type_name,
-    type_code: disasterType.type_code,
-    description: disasterType.description,
-    warning_criteria: disasterType.warning_criteria || {
-      severe: [],
-      moderate: [],
-      light: []
-    }
-  }
-  dialogVisible.value = true
-}
-
-// 添加条件
-const addCriteria = (level) => {
-  formData.value.warning_criteria[level].push({
-    type: '',
-    operator: '',
-    value: ''
-  })
-}
-
-// 移除条件
-const removeCriteria = (level, index) => {
-  formData.value.warning_criteria[level].splice(index, 1)
-}
-
-// 提交表单
-const handleSubmit = async () => {
-  if (!formRef.value) return
-  
-  await formRef.value.validate(async (valid) => {
-    if (valid) {
-      try {
-        let response
-        if (dialogType.value === 'create') {
-          response = await disasterTypeApi.createDisasterType(formData.value)
-        } else {
-          response = await disasterTypeApi.updateDisasterType(currentId.value, formData.value)
+      // 解析warning_criteria JSON（支持下划线和驼峰命名）
+      disasterTypeList.value = response.data.map(item => {
+        // 尝试获取warning_criteria（可能是warningCriteria或warning_criteria）
+        let criteria = item.warning_criteria || item.warningCriteria || null
+        
+        // 如果是字符串，解析为JSON
+        if (criteria && typeof criteria === 'string') {
+          try {
+            criteria = JSON.parse(criteria)
+          } catch (e) {
+            criteria = null
+          }
         }
         
-        if (response.code === 200) {
-          ElMessage.success(dialogType.value === 'create' ? '创建灾害类型成功' : '更新灾害类型成功')
-          dialogVisible.value = false
-          await loadDisasterTypes()
+        // 将分组格式转换为数组格式
+        let criteriaArray = []
+        if (criteria && typeof criteria === 'object') {
+          // 检查是否是分组格式 { light: [...], moderate: [...], severe: [...] }
+          if (criteria.light || criteria.moderate || criteria.severe) {
+            const levels = ['light', 'moderate', 'severe']
+            levels.forEach(level => {
+              if (criteria[level] && Array.isArray(criteria[level])) {
+                criteria[level].forEach(c => {
+                  criteriaArray.push({
+                    parameter: c.type || c.parameter,
+                    operator: c.operator,
+                    value: c.value,
+                    level: level
+                  })
+                })
+              }
+            })
+          } else if (Array.isArray(criteria)) {
+            // 已经是数组格式
+            criteriaArray = criteria
+          }
         }
+        
+        return {
+          ...item,
+          warning_criteria: criteriaArray
+        }
+      })
+      console.log('加载的灾害类型数据:', disasterTypeList.value)
+    }
+  } catch (error) {
+    console.error('加载灾害类型失败:', error)
+    ElMessage.error('获取灾害类型列表失败')
+  } finally {
+    disasterTypeLoading.value = false
+  }
+}
+
+// 打开灾害类型对话框
+const openDisasterTypeDialog = (disasterType = null) => {
+  if (disasterType) {
+    disasterTypeDialogType.value = 'edit'
+    disasterTypeForm.value = { 
+      id: disasterType.id,
+      type_name: disasterType.type_name,
+      type_code: disasterType.type_code,
+      description: disasterType.description || ''
+    }
+  } else {
+    disasterTypeDialogType.value = 'create'
+    disasterTypeForm.value = {
+      id: null,
+      type_name: '',
+      type_code: '',
+      description: ''
+    }
+  }
+  disasterTypeDialogVisible.value = true
+}
+
+// 保存灾害类型
+const saveDisasterType = async () => {
+  if (!disasterTypeFormRef.value) return
+  
+  await disasterTypeFormRef.value.validate(async (valid) => {
+    if (valid) {
+      try {
+        if (disasterTypeDialogType.value === 'create') {
+          const response = await disasterTypeApi.createDisasterType({
+            type_name: disasterTypeForm.value.type_name,
+            type_code: disasterTypeForm.value.type_code,
+            description: disasterTypeForm.value.description,
+            warning_criteria: []
+          })
+          if (response.code === 200) {
+            ElMessage.success('新增灾害类型成功')
+            loadDisasterTypes()
+          }
+        } else {
+          const response = await disasterTypeApi.updateDisasterType(disasterTypeForm.value.id, {
+            type_name: disasterTypeForm.value.type_name,
+            type_code: disasterTypeForm.value.type_code,
+            description: disasterTypeForm.value.description
+          })
+          if (response.code === 200) {
+            ElMessage.success('更新灾害类型成功')
+            loadDisasterTypes()
+          }
+        }
+        disasterTypeDialogVisible.value = false
       } catch (error) {
-        ElMessage.error(dialogType.value === 'create' ? '创建灾害类型失败' : '更新灾害类型失败')
+        ElMessage.error(disasterTypeDialogType.value === 'create' ? '新增失败' : '更新失败')
       }
     }
   })
 }
 
 // 删除灾害类型
-const handleDelete = (id) => {
-  ElMessageBox.confirm('确定要删除这个灾害类型吗？', '警告', {
+const deleteDisasterType = (id) => {
+  ElMessageBox.confirm('确定要删除这个灾害类型吗？删除后将无法恢复！', '警告', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
@@ -887,14 +814,58 @@ const handleDelete = (id) => {
       const response = await disasterTypeApi.deleteDisasterType(id)
       if (response.code === 200) {
         ElMessage.success('删除灾害类型成功')
-        await loadDisasterTypes()
+        loadDisasterTypes()
       }
     } catch (error) {
-      ElMessage.error('删除灾害类型失败')
+      ElMessage.error('删除失败')
     }
   }).catch(() => {
     // 取消删除
   })
+}
+
+// 打开阈值配置对话框
+const openThresholdDialog = (disasterType) => {
+  currentDisasterType.value = disasterType
+  thresholdForm.value.criteriaList = disasterType.warning_criteria ? 
+    [...disasterType.warning_criteria] : []
+  thresholdDialogVisible.value = true
+}
+
+// 添加阈值条件
+const addCriteria = () => {
+  thresholdForm.value.criteriaList.push({
+    parameter: 'temperature',
+    operator: '>',
+    value: 0,
+    level: 'moderate'
+  })
+}
+
+// 删除阈值条件
+const removeCriteria = (index) => {
+  thresholdForm.value.criteriaList.splice(index, 1)
+}
+
+// 保存阈值配置
+const saveThreshold = async () => {
+  if (!currentDisasterType.value) return
+  
+  try {
+    const response = await disasterTypeApi.updateDisasterType(currentDisasterType.value.id, {
+      type_name: currentDisasterType.value.type_name,
+      type_code: currentDisasterType.value.type_code,
+      description: currentDisasterType.value.description,
+      warning_criteria: thresholdForm.value.criteriaList
+    })
+    if (response.code === 200) {
+      ElMessage.success('阈值配置保存成功')
+      loadDisasterTypes()
+      thresholdDialogVisible.value = false
+    }
+  } catch (error) {
+    ElMessage.error('保存阈值配置失败')
+  }
 }
 
 // 页面挂载时加载数据
@@ -947,29 +918,6 @@ onMounted(() => {
   gap: 10px;
 }
 
-.disaster-types-management {
-  margin-top: 20px;
-}
-
-.criteria-section {
-  margin-top: 15px;
-}
-
-.criteria-title {
-  font-size: 14px;
-  font-weight: bold;
-  margin-bottom: 10px;
-}
-
-.criteria-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-  padding: 10px;
-  background-color: #f9f9f9;
-  border-radius: 4px;
-}
-
 .mr-10 {
   margin-right: 10px;
 }
@@ -981,5 +929,79 @@ onMounted(() => {
 
 .mt-20 {
   margin-top: 20px;
+}
+
+.text-gray {
+  color: #909399;
+}
+
+.text-small {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.criteria-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.criteria-tag {
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+
+.threshold-dialog-content {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.threshold-header {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.threshold-header h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: #303133;
+}
+
+.threshold-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.threshold-item {
+  position: relative;
+}
+
+.threshold-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.threshold-index {
+  font-weight: bold;
+  color: #606266;
+}
+
+.threshold-item-content {
+  padding: 10px 0;
+}
+
+.add-criteria-btn {
+  text-align: center;
+  margin-top: 10px;
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 </style>

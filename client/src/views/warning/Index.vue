@@ -17,6 +17,10 @@
               <el-icon><Warning /></el-icon>
               智能预警
             </el-button>
+            <el-button type="warning" @click="getMeteorologicalAlerts">
+              <el-icon><Warning /></el-icon>
+              气象局预警
+            </el-button>
             <el-button @click="exportData">
               <el-icon><Download /></el-icon>
               导出
@@ -78,57 +82,119 @@
         </div>
       </div>
 
-      <!-- 预警列表 -->
-      <div class="warning-list">
-        <el-empty v-if="warnings.length === 0 && !loading" description="暂无预警信息" />
-        
-        <div v-else class="warning-cards">
-          <div 
-            v-for="warning in warnings" 
-            :key="warning.id"
-            class="warning-card"
-            :class="[warning.warning_level, { 'selected': selectedWarnings.find(w => w.id === warning.id) }]"
-            @click.ctrl="handleWarningSelect(warning, !selectedWarnings.find(w => w.id === warning.id))"
-          >
-            <div class="warning-header">
-              <div class="header-left">
-                <el-checkbox 
-                  :model-value="!!selectedWarnings.find(w => w.id === warning.id)"
-                  @change="handleWarningSelect(warning, $event)"
-                  @click.stop
-                />
-                <el-tag :type="getWarningType(warning.warning_level)" size="large">
-                  {{ getWarningLevelText(warning.warning_level) }}
-                </el-tag>
-              </div>
-              <span class="warning-time">{{ formatTime(warning.created_at) }}</span>
-            </div>
+      <!-- 预警标签页 -->
+      <el-tabs v-model="activeTab" @tab-click="handleTabClick">
+        <el-tab-pane label="气象局预警" name="meteorological_bureau">
+          <div class="warning-list">
+            <el-empty v-if="meteorologicalWarnings.length === 0 && !loading" description="暂无气象局预警信息" />
             
-            <div class="warning-content">
-              <h4>{{ warning.warning_content }}</h4>
-              <div class="warning-meta">
-                <p><strong>区域：</strong>{{ warning.region }}</p>
-                <p><strong>灾害类型：</strong>{{ warning.disasterType?.type_name }}</p>
-                <p v-if="warning.start_time">
-                  <strong>开始时间：</strong>{{ formatTime(warning.start_time) }}
-                </p>
-              </div>
-            </div>
-            
-            <div class="warning-actions">
-              <el-button size="small" @click="viewDetail(warning)">查看详情</el-button>
-              <el-button 
-                v-if="warning.status === 'active'" 
-                type="danger" 
-                size="small"
-                @click="cancelWarning(warning)"
+            <div v-else class="warning-cards">
+              <div 
+                v-for="warning in meteorologicalWarnings" 
+                :key="warning.id"
+                class="warning-card"
+                :class="[warning.warning_level, { 'selected': selectedWarnings.find(w => w.id === warning.id) }]"
+                @click.ctrl="handleWarningSelect(warning, !selectedWarnings.find(w => w.id === warning.id))"
               >
-                取消预警
-              </el-button>
+                <div class="warning-header">
+                  <div class="header-left">
+                    <el-checkbox 
+                      :model-value="!!selectedWarnings.find(w => w.id === warning.id)"
+                      @change="handleWarningSelect(warning, $event)"
+                      @click.stop
+                    />
+                    <el-tag :type="getWarningType(warning.warning_level)" size="large">
+                      {{ getWarningLevelText(warning.warning_level) }}
+                    </el-tag>
+                    <el-tag type="info" size="small">
+                      气象局
+                    </el-tag>
+                  </div>
+                  <span class="warning-time">{{ formatTime(warning.created_at) }}</span>
+                </div>
+                
+                <div class="warning-content">
+                  <h4>{{ warning.warning_content }}</h4>
+                  <div class="warning-meta">
+                    <p><strong>区域：</strong>{{ warning.region }}</p>
+                    <p><strong>灾害类型：</strong>{{ warning.disasterType?.type_name }}</p>
+                    <p v-if="warning.start_time">
+                      <strong>开始时间：</strong>{{ formatTime(warning.start_time) }}
+                    </p>
+                  </div>
+                </div>
+                
+                <div class="warning-actions">
+                  <el-button size="small" @click="viewDetail(warning)">查看详情</el-button>
+                  <el-button 
+                    v-if="warning.status === 'active'" 
+                    type="danger" 
+                    size="small"
+                    @click="cancelWarning(warning)"
+                  >
+                    取消预警
+                  </el-button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </el-tab-pane>
+        <el-tab-pane label="阈值设定预警" name="threshold">
+          <div class="warning-list">
+            <el-empty v-if="thresholdWarnings.length === 0 && !loading" description="暂无阈值设定预警信息" />
+            
+            <div v-else class="warning-cards">
+              <div 
+                v-for="warning in thresholdWarnings" 
+                :key="warning.id"
+                class="warning-card"
+                :class="[warning.warning_level, { 'selected': selectedWarnings.find(w => w.id === warning.id) }]"
+                @click.ctrl="handleWarningSelect(warning, !selectedWarnings.find(w => w.id === warning.id))"
+              >
+                <div class="warning-header">
+                  <div class="header-left">
+                    <el-checkbox 
+                      :model-value="!!selectedWarnings.find(w => w.id === warning.id)"
+                      @change="handleWarningSelect(warning, $event)"
+                      @click.stop
+                    />
+                    <el-tag :type="getWarningType(warning.warning_level)" size="large">
+                      {{ getWarningLevelText(warning.warning_level) }}
+                    </el-tag>
+                    <el-tag type="success" size="small">
+                      阈值设定
+                    </el-tag>
+                  </div>
+                  <span class="warning-time">{{ formatTime(warning.created_at) }}</span>
+                </div>
+                
+                <div class="warning-content">
+                  <h4>{{ warning.warning_content }}</h4>
+                  <div class="warning-meta">
+                    <p><strong>区域：</strong>{{ warning.region }}</p>
+                    <p><strong>灾害类型：</strong>{{ warning.disasterType?.type_name }}</p>
+                    <p v-if="warning.start_time">
+                      <strong>开始时间：</strong>{{ formatTime(warning.start_time) }}
+                    </p>
+                  </div>
+                </div>
+                
+                <div class="warning-actions">
+                  <el-button size="small" @click="viewDetail(warning)">查看详情</el-button>
+                  <el-button 
+                    v-if="warning.status === 'active'" 
+                    type="danger" 
+                    size="small"
+                    @click="cancelWarning(warning)"
+                  >
+                    取消预警
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
 
       <!-- 分页 -->
       <div class="pagination-wrapper">
@@ -187,6 +253,13 @@
           <label>状态：</label>
           <el-tag :type="getStatusType(selectedWarning.status)">
             {{ getStatusText(selectedWarning.status) }}
+          </el-tag>
+        </div>
+        
+        <div class="detail-item">
+          <label>预警来源：</label>
+          <el-tag :type="selectedWarning.source === 'meteorological_bureau' ? 'info' : 'success'">
+            {{ selectedWarning.source === 'meteorological_bureau' ? '气象局发布' : '阈值设定' }}
           </el-tag>
         </div>
         
@@ -456,7 +529,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Download, 
@@ -470,7 +543,7 @@ import {
   // CloudyRain/Snowy/Wind 等在 Element Plus 中不存在，使用 Cloudy 代替
 } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
-import { getWarningList, cancelWarningRecord } from '@/api/warning'
+import { getWarningList, cancelWarningRecord, fetchMeteorologicalAlerts } from '@/api/warning'
 import { getRealWeather, getWeatherForecast, submitRealWeatherData, getSupportedRegions } from '@/api/weather'
 
 // 数据
@@ -487,6 +560,7 @@ const realWeatherLoading = ref(false)
 const currentWeather = ref(null)
 const weatherForecast = ref([])
 const selectedRegion = ref('beijing')
+const activeTab = ref('meteorological_bureau')
 
 // 筛选表单
 const filterForm = reactive({
@@ -503,6 +577,16 @@ const pagination = reactive({
   page: 1,
   limit: 10,
   total: 0
+})
+
+// 计算属性：气象局预警
+const meteorologicalWarnings = computed(() => {
+  return warnings.value.filter(warning => warning.source === 'meteorological_bureau')
+})
+
+// 计算属性：阈值设定预警
+const thresholdWarnings = computed(() => {
+  return warnings.value.filter(warning => warning.source === 'threshold' || !warning.source)
 })
 
 // 表单数据
@@ -594,7 +678,15 @@ const fetchRealWeather = async () => {
       weatherForecast.value = forecastResponse.data
     }
     
-    ElMessage.success('天气数据获取成功')
+    // 自动同步到系统并触发预警检测
+    try {
+      await submitRealWeatherData(currentWeather.value)
+      // 同步后自动进行智能预警检测
+      await autoDetectWarning()
+      ElMessage.success('天气数据已获取并同步到系统')
+    } catch (error) {
+      ElMessage.warning('天气数据获取成功，但同步到系统失败')
+    }
   } catch (error) {
     console.error('获取实时天气错误:', error)
     ElMessage.error('获取实时天气失败')
@@ -839,7 +931,7 @@ const exportData = () => {
   }
 
   // 准备CSV数据
-  const headers = ['预警等级', '区域', '灾害类型', '预警内容', '开始时间', '结束时间', '状态', '创建时间']
+  const headers = ['预警等级', '区域', '灾害类型', '预警内容', '开始时间', '结束时间', '状态', '预警来源', '创建时间']
   const csvContent = [
     headers.join(','),
     ...warnings.value.map(warning => [
@@ -850,6 +942,7 @@ const exportData = () => {
       formatTime(warning.start_time),
       formatTime(warning.end_time),
       getStatusText(warning.status),
+      warning.source === 'meteorological_bureau' ? '气象局发布' : '阈值设定',
       formatTime(warning.created_at)
     ].join(','))
   ].join('\n')
@@ -1003,6 +1096,30 @@ const autoDetectWarning = async () => {
   }
 }
 
+// 获取气象局发布的灾害预警
+const getMeteorologicalAlerts = async () => {
+  try {
+    autoDetecting.value = true
+    
+    const response = await fetchMeteorologicalAlerts()
+    if (response.code === 200) {
+      if (response.data.warnings && response.data.warnings.length > 0) {
+        ElMessage.success(`获取到 ${response.data.warnings.length} 条气象局预警`)
+        fetchWarnings()
+      } else {
+        ElMessage.info('暂未获取到气象局预警')
+      }
+    } else {
+      ElMessage.error(response.message || '获取气象局预警失败')
+    }
+  } catch (error) {
+    console.error('获取气象局预警错误:', error)
+    ElMessage.error('获取气象局预警失败')
+  } finally {
+    autoDetecting.value = false
+  }
+}
+
 // 处理预警选择
 const handleWarningSelect = (warning, selected) => {
   if (selected) {
@@ -1012,6 +1129,14 @@ const handleWarningSelect = (warning, selected) => {
   } else {
     selectedWarnings.value = selectedWarnings.value.filter(w => w.id !== warning.id)
   }
+}
+
+// 处理标签页点击
+const handleTabClick = () => {
+  // 清空选择
+  selectedWarnings.value = []
+  // 刷新数据
+  fetchWarnings()
 }
 
 onMounted(() => {

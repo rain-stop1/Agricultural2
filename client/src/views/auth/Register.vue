@@ -3,7 +3,7 @@
     <div class="register-card">
       <div class="register-header">
         <h2>用户注册</h2>
-        <p> Agricultural Disaster Warning System</p>
+        <p> Agricultural Disaster Warning and Emergency Response System</p>
       </div>
       
       <el-form
@@ -26,7 +26,7 @@
           <el-input
             v-model="registerForm.password"
             type="password"
-            placeholder="请输入密码"
+            placeholder="请输入密码（6-20位，需包含字母和数字）"
             size="large"
             prefix-icon="Lock"
             show-password
@@ -125,6 +125,7 @@ import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { regions } from '@/utils/regions'
+import { ElMessageBox } from 'element-plus'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -171,7 +172,8 @@ const registerRules = {
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度为 6 到 20 个字符', trigger: 'blur' }
+    { min: 6, max: 20, message: '密码长度为 6 到 20 个字符', trigger: 'blur' },
+    { pattern: /^(?=.*[a-zA-Z])(?=.*\d)/, message: '密码必须包含字母和数字', trigger: 'blur' }
   ],
   confirmPassword: [
     { required: true, message: '请确认密码', trigger: 'blur' },
@@ -216,7 +218,21 @@ const handleRegister = async () => {
     
     const success = await userStore.register(submitData)
     if (success) {
-      router.push('/login')
+      // 显示注册成功弹窗
+      await ElMessageBox.alert('注册成功！即将跳转到登录页面', '提示', {
+        confirmButtonText: '确定',
+        type: 'success',
+        callback: () => {
+          // 跳转到登录页并传递账号密码
+          router.push({
+            path: '/login',
+            query: {
+              username: registerForm.username,
+              password: registerForm.password
+            }
+          })
+        }
+      })
     }
   } catch (error) {
     console.error('注册验证错误:', error)
@@ -227,7 +243,8 @@ const handleRegister = async () => {
 <style scoped>
 .register-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: url('/background.jpg') no-repeat center center fixed;
+  background-size: cover;
   display: flex;
   justify-content: center;
   align-items: center;

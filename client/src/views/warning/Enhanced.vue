@@ -12,7 +12,7 @@
               <div class="stat-info">
                 <div class="stat-value">{{ weatherStatistics.high || 0 }}</div>
                 <div class="stat-label">高风险区域</div>
-                <div class="stat-sub">{{ statistics.severe || 0 }} 条预警记录</div>
+                <div class="stat-sub">{{ activeWarnings.filter(w => w.warning_level === 'severe').length || 0 }} 条预警记录</div>
               </div>
             </div>
           </el-card>
@@ -26,7 +26,7 @@
               <div class="stat-info">
                 <div class="stat-value">{{ weatherStatistics.medium || 0 }}</div>
                 <div class="stat-label">中风险区域</div>
-                <div class="stat-sub">{{ statistics.moderate || 0 }} 条预警记录</div>
+                <div class="stat-sub">{{ activeWarnings.filter(w => w.warning_level === 'moderate').length || 0 }} 条预警记录</div>
               </div>
             </div>
           </el-card>
@@ -40,7 +40,7 @@
               <div class="stat-info">
                 <div class="stat-value">{{ weatherStatistics.normal || 0 }}</div>
                 <div class="stat-label">正常区域</div>
-                <div class="stat-sub">{{ statistics.light || 0 }} 条轻度预警</div>
+                <div class="stat-sub">{{ weatherStatistics.light || 0 }} 条轻度预警</div>
               </div>
             </div>
           </el-card>
@@ -54,7 +54,7 @@
               <div class="stat-info">
                 <div class="stat-value">{{ weatherStatistics.total || 0 }}</div>
                 <div class="stat-label">监测城市</div>
-                <div class="stat-sub">{{ statistics.total || 0 }} 条总预警</div>
+                <div class="stat-sub">{{ totalWarningsCount || 0 }} 条总预警</div>
               </div>
             </div>
           </el-card>
@@ -183,36 +183,82 @@
             </div>
           </template>
           
-          <div class="realtime-warnings">
-            <el-empty 
-              v-if="activeWarnings.length === 0" 
-              description="暂无预警记录"
-              :image-size="100"
-            />
-            
-            <div 
-              v-for="warning in activeWarnings" 
-              :key="warning.id"
-              class="warning-item"
-              :class="warning.warning_level"
-            >
-              <div class="warning-header">
-                <el-tag :type="getWarningType(warning.warning_level)" size="small">
-                  {{ getWarningLevelText(warning.warning_level) }}
-                </el-tag>
-                <span class="warning-time">{{ formatTime(warning.created_at) }}</span>
+          <el-tabs v-model="activeWarningTab" class="warning-tabs">
+            <el-tab-pane label="气象局预警" name="meteorological_bureau">
+              <div class="realtime-warnings">
+                <el-empty 
+                  v-if="meteorologicalWarnings.length === 0" 
+                  description="暂无气象局预警记录"
+                  :image-size="100"
+                />
+                
+                <div 
+                  v-for="warning in meteorologicalWarnings" 
+                  :key="warning.id"
+                  class="warning-item"
+                  :class="warning.warning_level"
+                >
+                  <div class="warning-header">
+                    <div class="warning-tags">
+                      <el-tag :type="getWarningType(warning.warning_level)" size="small">
+                        {{ getWarningLevelText(warning.warning_level) }}
+                      </el-tag>
+                      <el-tag type="info" size="small">
+                        气象局
+                      </el-tag>
+                    </div>
+                    <span class="warning-time">{{ formatTime(warning.created_at) }}</span>
+                  </div>
+                  
+                  <div class="warning-content">
+                    <h4>{{ warning.warning_content }}</h4>
+                    <p class="warning-location">{{ warning.region }}</p>
+                  </div>
+                  
+                  <div class="warning-actions">
+                    <el-button size="small" text @click="viewWeatherDetail(warning)">详情</el-button>
+                  </div>
+                </div>
               </div>
-              
-              <div class="warning-content">
-                <h4>{{ warning.warning_content }}</h4>
-                <p class="warning-location">{{ warning.region }}</p>
+            </el-tab-pane>
+            <el-tab-pane label="阈值设定预警" name="threshold">
+              <div class="realtime-warnings">
+                <el-empty 
+                  v-if="thresholdWarnings.length === 0" 
+                  description="暂无阈值设定预警记录"
+                  :image-size="100"
+                />
+                
+                <div 
+                  v-for="warning in thresholdWarnings" 
+                  :key="warning.id"
+                  class="warning-item"
+                  :class="warning.warning_level"
+                >
+                  <div class="warning-header">
+                    <div class="warning-tags">
+                      <el-tag :type="getWarningType(warning.warning_level)" size="small">
+                        {{ getWarningLevelText(warning.warning_level) }}
+                      </el-tag>
+                      <el-tag type="success" size="small">
+                        阈值设定
+                      </el-tag>
+                    </div>
+                    <span class="warning-time">{{ formatTime(warning.created_at) }}</span>
+                  </div>
+                  
+                  <div class="warning-content">
+                    <h4>{{ warning.warning_content }}</h4>
+                    <p class="warning-location">{{ warning.region }}</p>
+                  </div>
+                  
+                  <div class="warning-actions">
+                    <el-button size="small" text @click="viewWeatherDetail(warning)">详情</el-button>
+                  </div>
+                </div>
               </div>
-              
-              <div class="warning-actions">
-                <el-button size="small" text @click="viewWeatherDetail(warning)">详情</el-button>
-              </div>
-            </div>
-          </div>
+            </el-tab-pane>
+          </el-tabs>
         </el-card>
 
 
@@ -261,7 +307,7 @@
               <el-tag 
                 v-for="risk in row.risk.risks" 
                 :key="risk"
-                :type="row.risk.level === 'high' ? 'danger' : 'warning'"
+                :type="row.risk.level === 'severe' ? 'danger' : row.risk.level === 'moderate' ? 'warning' : 'info'"
                 size="small"
                 style="margin-right: 4px;"
               >
@@ -271,8 +317,8 @@
           </el-table-column>
           <el-table-column label="风险等级" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.risk.level === 'high' ? 'danger' : row.risk.level === 'medium' ? 'warning' : 'success'">
-                {{ row.risk.level === 'high' ? '高风险' : row.risk.level === 'medium' ? '中风险' : '正常' }}
+              <el-tag :type="row.risk.level === 'severe' ? 'danger' : row.risk.level === 'moderate' ? 'warning' : row.risk.level === 'light' ? 'info' : 'success'">
+                {{ row.risk.level === 'severe' ? '高风险' : row.risk.level === 'moderate' ? '中风险' : row.risk.level === 'light' ? '轻度风险' : '正常' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -342,9 +388,12 @@
         <div class="city-selector">
           <el-select 
             v-model="selectedCity" 
-            placeholder="选择城市" 
+            placeholder="选择或输入城市" 
             @change="fetchWeatherForDialog"
             style="width: 200px;"
+            filterable
+            allow-create
+            default-first-option
           >
             <el-option
               v-for="city in cityOptions"
@@ -427,6 +476,7 @@
                 <div class="forecast-details">
                   <div><el-icon><Drizzling /></el-icon> {{ day.rainfall ? day.rainfall.toFixed(1) : 0 }}mm</div>
                   <div><el-icon><Compass /></el-icon> {{ day.humidity }}%</div>
+                  <div><el-icon><Warning /></el-icon> 降雨概率 {{ day.rain_probability !== undefined ? day.rain_probability : 0 }}%</div>
                 </div>
               </el-card>
             </el-col>
@@ -438,7 +488,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   WarningFilled, 
@@ -478,7 +529,9 @@ L.Icon.Default.mergeOptions({
 })
 
 import { getWarningList, cancelWarningRecord, getWarningStatistics } from '@/api/warning'
-import { getRealWeather, getWeatherForecast } from '@/api/weather'
+import { getRealWeather, getWeatherForecast, submitRealWeatherData } from '@/api/weather'
+import { disasterTypeApi } from '@/api/disaster-types'
+import request from '@/api/request'
 
 // 注册 ECharts 组件
 use([
@@ -492,9 +545,10 @@ use([
 ])
 
 // 响应式数据
+const route = useRoute()
 const statistics = ref({})
 const warnings = ref([])
-const activeWarnings = ref([])
+const allWarnings = ref([]) // 存储所有预警
 const totalWarningsCount = ref(0) // 总预警数（用于显示badge）
 const loading = ref(false)
 const chartLoading = ref(false)
@@ -508,11 +562,27 @@ const weatherLayer = ref(null) // 气象图层
 const weatherData = ref({}) // 存储各城市天气数据
 const showWeather = ref(true) // 是否显示天气
 const weatherLoadingProgress = ref(0) // 天气加载进度
-// const weatherLoadingTotal = ref(0) // 总城市数
-// const isLoadingWeather = ref(false) // 是否正在加载天气
+const weatherLoadingTotal = ref(0) // 总城市数
+const isLoadingWeather = ref(false) // 是否正在加载天气
 const showWeatherLayerPanel = ref(false) // 是否显示气象图层面板
 const activeWeatherLayer = ref(null) // 当前激活的气象图层
 const weatherLayerOpacity = ref(0.6) // 气象图层透明度
+
+// 计算属性：根据 region 查询参数过滤预警
+const activeWarnings = computed(() => {
+  const region = route.query.region
+  if (!region) {
+    return allWarnings.value
+  }
+  // 过滤出与用户地区匹配的预警
+  return allWarnings.value.filter(warning => {
+    const warningRegion = warning.region || warning.region_name || ''
+    return warningRegion.includes(region) || region.includes(warningRegion)
+  })
+})
+
+// 阈值配置缓存
+const thresholdConfig = ref({})
 
 // 气象图层配置
 const weatherLayers = reactive([
@@ -557,8 +627,6 @@ const weatherLayers = reactive([
     url: 'pressure_new'
   }
 ])
-const weatherLoadingTotal = ref(0) // 总城市数
-const isLoadingWeather = ref(false) // 是否正在加载天气
 const weatherStatistics = ref({
   high: 0,      // 高风险区域数
   medium: 0,    // 中风险区域数
@@ -581,7 +649,10 @@ const loadingWeatherDialog = ref(false)
 // 缓存配置
 const CACHE_KEY = 'weather_data_cache'
 const CACHE_TIMESTAMP_KEY = 'weather_data_timestamp'
-const CACHE_DURATION = 10 * 60 * 1000 // 10分钟
+const CACHE_DURATION = 60 * 60 * 1000 // 1小时
+
+// 定时刷新天气数据的定时器
+let weatherRefreshTimer = null
 
 // 筛选条件
 const mapFilter = reactive({
@@ -590,6 +661,19 @@ const mapFilter = reactive({
 
 // 趋势周期
 const trendPeriod = ref('7')
+
+// 预警标签页
+const activeWarningTab = ref('meteorological_bureau')
+
+// 计算属性：气象局预警（使用前端生成的预警数据）
+const meteorologicalWarnings = computed(() => {
+  return allWarnings.value.filter(warning => warning.source === 'meteorological_bureau')
+})
+
+// 计算属性：阈值设定预警（使用前端生成的预警数据）
+const thresholdWarnings = computed(() => {
+  return allWarnings.value.filter(warning => warning.source === 'threshold' || !warning.source)
+})
 
 // 统计数据
 const fetchStatistics = async () => {
@@ -600,6 +684,26 @@ const fetchStatistics = async () => {
     }
   } catch (error) {
     console.error('获取统计数据错误:', error)
+  }
+}
+
+// 加载阈值配置
+const loadThresholdConfig = async () => {
+  try {
+    const response = await disasterTypeApi.getDisasterTypes()
+    if (response.code === 200) {
+      const types = response.data
+      const config = {}
+      types.forEach(type => {
+        if (type.warning_criteria) {
+          config[type.type_code] = type.warning_criteria
+        }
+      })
+      thresholdConfig.value = config
+      console.log('✅ 加载阈值配置成功:', config)
+    }
+  } catch (error) {
+    console.error('加载阈值配置失败:', error)
   }
 }
 
@@ -629,9 +733,9 @@ const fetchWarnings = async () => {
   }
 }
 
-// 生成地图点位数据（模拟数据）
+// 生成地图点位数据（使用前端生成的预警数据）
 const mapPoints = computed(() => {
-  return activeWarnings.value.map(warning => ({
+  return allWarnings.value.map(warning => ({
     ...warning,
     x: Math.random() * 80 + 10, // 10% - 90%
     y: Math.random() * 80 + 10, // 10% - 90%
@@ -906,7 +1010,7 @@ const updateAllCharts = () => {
 }
 
 // 刷新地图
-const refreshMap = () => {
+const refreshMap = async () => {
   // 清空现有标记
   leafletMarkers.value.forEach(marker => {
     try {
@@ -922,8 +1026,78 @@ const refreshMap = () => {
   
   // 强制重新加载
   fetchWarnings()
-  addWeatherMarkers(true) // 传入 true 强制重新加载
+  await addWeatherMarkers(true) // 传入 true 强制重新加载
+  
+  // 自动同步天气数据到系统并触发预警检测
+  await syncWeatherDataToSystem()
 }
+
+// 同步天气数据到系统（使用批量接口）
+const syncWeatherDataToSystem = async () => {
+  try {
+    // 同步所有城市的天气数据
+    const citiesToSync = Object.keys(weatherData.value)
+    if (citiesToSync.length === 0) {
+      ElMessage.warning('没有天气数据可同步')
+      return
+    }
+    
+    ElMessage.info(`正在同步 ${citiesToSync.length} 个城市的天气数据...`)
+    
+    // 准备批量提交的数据
+    const weatherDataList = []
+    for (const cityCode of citiesToSync) {
+      const weather = weatherData.value[cityCode]
+      if (weather) {
+        // 获取城市名称
+        const city = getAllCities().find(c => c.code === cityCode)
+        const cityName = city ? city.name : cityCode
+        
+        // 确保天气数据格式正确，包含所有必要字段
+        const formattedWeatherData = {
+          region: cityName,
+          temperature: weather.temperature || 0,
+          humidity: weather.humidity || 0,
+          rainfall: weather.rainfall || 0,
+          wind_speed: weather.wind_speed || 0,
+          wind_direction: weather.wind_direction || '无',
+          air_pressure: weather.air_pressure || 1013
+        }
+        
+        weatherDataList.push(formattedWeatherData)
+      }
+    }
+    
+    if (weatherDataList.length === 0) {
+      ElMessage.warning('没有有效的天气数据可同步')
+      return
+    }
+    
+    console.log(`批量提交 ${weatherDataList.length} 个城市的天气数据`)
+    
+    // 使用批量提交接口
+    const response = await request({
+      url: '/weather/batch',
+      method: 'post',
+      data: { weatherDataList }
+    })
+    
+    if (response.code === 200) {
+      const { batchOrder, cityCount, warningCount } = response.data
+      ElMessage.success(`成功同步 ${cityCount} 个城市的天气数据，生成 ${warningCount} 条预警（批序: ${batchOrder}）`)
+      
+      // 重新获取预警列表，显示最新的预警
+      await fetchWarnings()
+    } else {
+      ElMessage.warning('同步天气数据失败')
+    }
+  } catch (error) {
+    console.error('同步天气数据到系统失败:', error)
+    ElMessage.error('同步天气数据到系统失败')
+  }
+}
+
+
 
 // 切换气象图层
 const toggleWeatherLayer = (layerId) => {
@@ -1235,53 +1409,49 @@ const renderLeafletMap = () => {
 
   // 生成标记
   let validMarkerCount = 0
-  mapPoints.value.forEach(point => {
+  allWarnings.value.forEach(warning => {
     // 尝试获取坐标
     let coord = null
     
-    if (point.lat && point.lng) {
-      coord = { lat: parseFloat(point.lat), lng: parseFloat(point.lng) }
-    } else {
-      // 尝试从城市名称匹配坐标
-      const regionKey = (point.region || point.region_name || '').toLowerCase()
-        .replace(/省|市|区|县/g, '')
-        .trim()
-      
-      // 尝试多种匹配方式
-      coord = cityCoords[regionKey] || 
-              cityCoords[point.region?.toLowerCase()] ||
-              cityCoords[point.region_code?.toLowerCase()]
-    }
+    // 尝试从城市名称匹配坐标
+    const regionKey = (warning.region || '').toLowerCase()
+      .replace(/省|市|区|县/g, '')
+      .trim()
+    
+    // 尝试多种匹配方式
+    coord = cityCoords[regionKey] || 
+            cityCoords[warning.region?.toLowerCase()]
     
     if (!coord || isNaN(coord.lat) || isNaN(coord.lng)) {
-      console.warn('无效坐标:', point.region, coord)
+      console.warn('无效坐标:', warning.region, coord)
       return
     }
 
     try {
+      const level = warning.warning_level
       const marker = L.circleMarker([coord.lat, coord.lng], {
         radius: 10,
         color: '#fff',
         weight: 2,
-        fillColor: colorMap[point.level] || '#409eff',
+        fillColor: colorMap[level] || '#409eff',
         fillOpacity: 0.8
       }).addTo(leafletMap.value)
 
       marker.bindPopup(`
         <div style="min-width:200px; padding: 8px;">
-          <div style="font-weight: bold; margin-bottom: 8px; font-size: 14px;">${point.region || point.region_name || '未知区域'}</div>
-          <div style="margin-bottom: 4px;">等级：<span style="color: ${colorMap[point.level]}; font-weight: bold;">${getWarningLevelText(point.level)}</span></div>
-          <div style="margin-bottom: 4px;">内容：${point.warning_content || '-'}</div>
-          <div style="margin-bottom: 4px;">灾害类型：${point.disasterType?.type_name || '-'}</div>
-          <div style="color: #999; font-size: 12px;">时间：${formatTime(point.created_at)}</div>
+          <div style="font-weight: bold; margin-bottom: 8px; font-size: 14px;">${warning.region || '未知区域'}</div>
+          <div style="margin-bottom: 4px;">等级：<span style="color: ${colorMap[level]}; font-weight: bold;">${getWarningLevelText(level)}</span></div>
+          <div style="margin-bottom: 4px;">内容：${warning.warning_content || '-'}</div>
+          <div style="margin-bottom: 4px;">灾害类型：${warning.disasterType?.type_name || '-'}</div>
+          <div style="color: #999; font-size: 12px;">时间：${formatTime(warning.created_at)}</div>
         </div>
       `)
 
-      marker.on('click', () => showWarningDetail(point))
+      marker.on('click', () => showWarningDetail(warning))
       leafletMarkers.value.push(marker)
       validMarkerCount++
     } catch (error) {
-      console.error('添加标记失败:', error, point)
+      console.error('添加标记失败:', error, warning)
     }
   })
   
@@ -1298,7 +1468,7 @@ const renderLeafletMap = () => {
   }
   
   // 如果开启天气显示，添加天气标记
-  if (showWeather.value) {
+  if (showWeather.value && Object.keys(weatherData.value).length === 0) {
     addWeatherMarkers()
   }
 }
@@ -1618,6 +1788,7 @@ const updateWeatherStatistics = () => {
   let high = 0
   let medium = 0
   let normal = 0
+  let light = 0 // 统计轻度预警数量
   const generatedWarnings = []
   
   const allCities = getAllCities()
@@ -1628,17 +1799,21 @@ const updateWeatherStatistics = () => {
     
     const risk = analyzeDisasterRisk(weather)
     
-    if (risk.level === 'high') {
+    if (risk.level === 'severe') {
       high++
-    } else if (risk.level === 'medium') {
+    } else if (risk.level === 'moderate') {
       medium++
     } else {
       normal++
+      // 检查是否存在轻度风险
+      if (risk.level === 'light') {
+        light++
+      }
     }
     
-    // 只为高风险和中风险区域生成预警
-    if (risk.level === 'high' || risk.level === 'medium') {
-      const warningLevel = risk.level === 'high' ? 'severe' : 'moderate'
+    // 为高风险、中风险和轻度风险区域生成预警
+    if (risk.level === 'severe' || risk.level === 'moderate' || risk.level === 'light') {
+      const warningLevel = risk.level
       
       // 生成预警内容
       let warningContent = ''
@@ -1661,23 +1836,25 @@ const updateWeatherStatistics = () => {
         warningContent = `${city.name}地区当前温度${temp}°C，高温预警，请注意防暑降温和作物遮阳`
       } else if (risk.risks.includes('大风')) {
         warningContent = `${city.name}地区当前风速${windSpeed}m/s，大风预警，请加固农业设施`
-      } else {
+      } else if (risk.risks.length > 0) {
         warningContent = `${city.name}地区${risk.risks.join('、')}，请注意防范`
       }
       
-      generatedWarnings.push({
-        id: `weather_${code}_${Date.now()}`,
-        region: city.name,
-        warning_level: warningLevel,
-        warning_content: warningContent,
-        status: 'active',
-        created_at: new Date().toISOString(),
-        weather: weather,
-        risk: risk,
-        disasterType: {
-          type_name: risk.risks[0] || '气象灾害'
-        }
-      })
+      if (warningContent) {
+        generatedWarnings.push({
+          id: `weather_${code}_${Date.now()}`,
+          region: city.name,
+          warning_level: warningLevel,
+          warning_content: warningContent,
+          status: 'active',
+          created_at: new Date().toISOString(),
+          weather: weather,
+          risk: risk,
+          disasterType: {
+            type_name: risk.risks[0] || '气象灾害'
+          }
+        })
+      }
     }
   })
   
@@ -1692,16 +1869,17 @@ const updateWeatherStatistics = () => {
     high,
     medium,
     normal,
+    light, // 新增轻度预警数量
     total: Object.keys(weatherData.value).length
   }
   
   // 保存总预警数
   totalWarningsCount.value = generatedWarnings.length
   
-  // 更新预警列表（显示所有预警）
-  activeWarnings.value = generatedWarnings
+  // 更新预警列表（存储所有预警）
+  allWarnings.value = generatedWarnings
   
-  console.log(`📊 天气统计: 高风险 ${high} 个, 中风险 ${medium} 个, 正常 ${normal} 个`)
+  console.log(`📊 天气统计: 高风险 ${high} 个, 中风险 ${medium} 个, 正常 ${normal} 个, 轻度风险 ${light} 个`)
   console.log(`⚠️ 生成预警: ${totalWarningsCount.value} 条`)
 }
 
@@ -1727,8 +1905,9 @@ const renderWeatherBatch = (batchResults) => {
       
       // 只添加简单的圆点标记，不添加文字标签（减少DOM元素）
       const risk = analyzeDisasterRisk(weather)
-      const markerColor = risk.level === 'high' ? '#f56c6c' : 
-                         risk.level === 'medium' ? '#e6a23c' : '#67c23a'
+      const markerColor = risk.level === 'severe' ? '#f56c6c' : 
+                         risk.level === 'moderate' ? '#e6a23c' : 
+                         risk.level === 'light' ? '#409eff' : '#67c23a'
       
       const simpleMarker = L.circleMarker([coord.lat, coord.lng], {
         radius: 4,
@@ -1769,8 +1948,102 @@ const renderWeatherBatch = (batchResults) => {
   }
 }
 
-// 分析灾害风险
-const analyzeDisasterRisk = (weather) => {
+// 评估单个阈值条件
+const evaluateCondition = (type, operator, value, actualValue) => {
+  if (actualValue === null || actualValue === undefined) return false
+  
+  switch (operator) {
+    case '>':
+      return actualValue > value
+    case '<':
+      return actualValue < value
+    case '>=':
+      return actualValue >= value
+    case '<=':
+      return actualValue <= value
+    case '=':
+    case '==':
+      return actualValue == value
+    default:
+      return false
+  }
+}
+
+// 使用配置的阈值评估风险
+const evaluateRiskWithConfig = (weather) => {
+  const risks = []
+  let level = 'none'
+  let color = '#67c23a'
+  let disasterType = ''
+  
+  // 如果没有配置，使用默认逻辑
+  if (Object.keys(thresholdConfig.value).length === 0) {
+    return analyzeDisasterRiskDefault(weather)
+  }
+  
+  // 遍历所有灾害类型的阈值配置
+  Object.entries(thresholdConfig.value).forEach(([typeCode, criteria]) => {
+    if (!criteria) return
+    
+    // 按优先级检查：severe > moderate > light
+    const levels = ['severe', 'moderate', 'light']
+    
+    for (const levelKey of levels) {
+      if (criteria[levelKey] && Array.isArray(criteria[levelKey])) {
+        const conditions = criteria[levelKey]
+        let allMatched = true
+        
+        for (const condition of conditions) {
+          const { type, operator, value } = condition
+          const actualValue = weather[type]
+          
+          if (!evaluateCondition(type, operator, value, actualValue)) {
+            allMatched = false
+            break
+          }
+        }
+        
+        if (allMatched) {
+          // 找到匹配的风险等级
+          const typeNameMap = {
+            'drought': '干旱',
+            'flood': '洪涝',
+            'freeze': '冻害',
+            'heat': '高温',
+            'wind': '大风',
+            'pest': '病虫害',
+            'hail': '冰雹',
+            'storm': '暴雨',
+            'snow': '暴雪',
+            'fog': '大雾',
+            'sandstorm': '沙尘暴',
+            'typhoon': '台风'
+          }
+          const typeName = typeNameMap[typeCode] || typeCode
+          
+          risks.push(typeName)
+          
+          // 更新最高风险等级
+          if (levelKey === 'severe' || 
+              (levelKey === 'moderate' && level !== 'severe') || 
+              (levelKey === 'light' && level === 'none')) {
+            level = levelKey
+            color = levelKey === 'severe' ? '#f56c6c' : 
+                   levelKey === 'moderate' ? '#e6a23c' : '#409eff'
+            disasterType = typeCode
+          }
+          
+          break // 找到最高风险等级后停止检查
+        }
+      }
+    }
+  })
+  
+  return { level, risks, color, disasterType }
+}
+
+// 默认风险评估逻辑（当没有配置时使用）
+const analyzeDisasterRiskDefault = (weather) => {
   const risks = []
   let level = 'none'
   let color = '#67c23a'
@@ -1779,12 +2052,12 @@ const analyzeDisasterRisk = (weather) => {
   // 干旱风险判断
   if (weather.humidity < 30 && weather.temperature > 30) {
     risks.push('干旱')
-    level = 'high'
+    level = 'severe'
     color = '#e6a23c'
     disasterType = 'drought'
   } else if (weather.humidity < 40 && weather.temperature > 28) {
     risks.push('干旱倾向')
-    level = 'medium'
+    level = 'moderate'
     color = '#f0c78a'
     disasterType = 'drought'
   }
@@ -1793,13 +2066,13 @@ const analyzeDisasterRisk = (weather) => {
   const rainfall = weather.rainfall || 0
   if (rainfall > 50 || (weather.humidity > 85 && weather.wind_speed > 10)) {
     risks.push('洪涝')
-    level = 'high'
+    level = 'severe'
     color = '#f56c6c'
     disasterType = 'flood'
   } else if (rainfall > 20 || weather.humidity > 80) {
     risks.push('强降雨')
-    level = level === 'high' ? 'high' : 'medium'
-    color = level === 'high' ? color : '#f89898'
+    level = level === 'severe' ? 'severe' : 'moderate'
+    color = level === 'severe' ? color : '#f89898'
     disasterType = 'flood'
   }
   
@@ -1807,8 +2080,8 @@ const analyzeDisasterRisk = (weather) => {
   if (weather.temperature < 0) {
     risks.push('冻害')
     const isHighFreeze = weather.temperature < -10
-    level = isHighFreeze ? 'high' : (level === 'high' ? 'high' : 'medium')
-    color = isHighFreeze ? '#409eff' : (level === 'high' ? color : '#79bbff')
+    level = isHighFreeze ? 'severe' : (level === 'severe' ? 'severe' : 'moderate')
+    color = isHighFreeze ? '#409eff' : (level === 'severe' ? color : '#79bbff')
     disasterType = 'freeze'
   }
   
@@ -1816,20 +2089,25 @@ const analyzeDisasterRisk = (weather) => {
   if (weather.temperature > 35) {
     risks.push('高温')
     const isHighHeat = weather.temperature > 38
-    level = isHighHeat ? 'high' : (level === 'high' ? 'high' : 'medium')
-    color = isHighHeat ? '#f56c6c' : (level === 'high' ? color : '#e6a23c')
+    level = isHighHeat ? 'severe' : (level === 'severe' ? 'severe' : 'moderate')
+    color = isHighHeat ? '#f56c6c' : (level === 'severe' ? color : '#e6a23c')
     disasterType = 'heat'
   }
   
   // 大风风险
   if (weather.wind_speed > 15) {
     risks.push('大风')
-    level = 'high'
+    level = 'severe'
     color = '#909399'
     disasterType = 'wind'
   }
   
   return { level, risks, color, disasterType }
+}
+
+// 分析灾害风险（使用配置的阈值）
+const analyzeDisasterRisk = (weather) => {
+  return evaluateRiskWithConfig(weather)
 }
 
 // 计算灾害影响区域（基于相邻城市的实际天气情况）
@@ -1879,7 +2157,7 @@ const drawDisasterAreas = () => {
     const affectedCities = calculateDisasterArea(allWeatherData, type)
     
     // 只绘制高风险区域
-    const highRiskCities = affectedCities.filter(city => city.risk.level === 'high')
+    const highRiskCities = affectedCities.filter(city => city.risk.level === 'severe')
     
     if (highRiskCities.length > 0) {
       // 按省份分组
@@ -1990,27 +2268,30 @@ const showRiskDetails = (riskLevel) => {
         weather,
         risk
       })
-    } else if (riskLevel === 'high' && risk.level === 'high') {
+    } else if (riskLevel === 'high' && risk.level === 'severe') {
       citiesWithRisk.push({
         code,
         name: city.name,
         weather,
         risk
       })
-    } else if (riskLevel === 'medium' && risk.level === 'medium') {
+    } else if (riskLevel === 'medium' && risk.level === 'moderate') {
       citiesWithRisk.push({
         code,
         name: city.name,
         weather,
         risk
       })
-    } else if (riskLevel === 'normal' && risk.level === 'none') {
-      citiesWithRisk.push({
-        code,
-        name: city.name,
-        weather,
-        risk: { level: 'none', risks: [] }
-      })
+    } else if (riskLevel === 'normal') {
+      // 正常区域包括无风险和轻度风险
+      if (risk.level === 'none' || (risk.risks.length > 0 && risk.level === 'light')) {
+        citiesWithRisk.push({
+          code,
+          name: city.name,
+          weather,
+          risk
+        })
+      }
     }
   })
   
@@ -2055,35 +2336,18 @@ const fetchWeatherForDialog = async () => {
 }
 
 // 城市列表（用于下拉选择）
-const cityOptions = [
-  { value: 'beijing', label: '北京' },
-  { value: 'shanghai', label: '上海' },
-  { value: 'guangzhou', label: '广州' },
-  { value: 'shenzhen', label: '深圳' },
-  { value: 'hangzhou', label: '杭州' },
-  { value: 'nanjing', label: '南京' },
-  { value: 'wuhan', label: '武汉' },
-  { value: 'chengdu', label: '成都' },
-  { value: 'xian', label: '西安' },
-  { value: 'tianjin', label: '天津' },
-  { value: 'chongqing', label: '重庆' },
-  { value: 'shijiazhuang', label: '石家庄' },
-  { value: 'jinan', label: '济南' },
-  { value: 'qingdao', label: '青岛' },
-  { value: 'dalian', label: '大连' },
-  { value: 'xiamen', label: '厦门' },
-  { value: 'suzhou', label: '苏州' },
-  { value: 'zhengzhou', label: '郑州' },
-  { value: 'changsha', label: '长沙' },
-  { value: 'hefei', label: '合肥' }
-]
+const cityOptions = getAllCities().map(city => ({
+  value: city.code,
+  label: city.name
+}))
 
 // 初始化
 onMounted(async () => {
   // 先加载基础数据
   await Promise.all([
     fetchStatistics(),
-    fetchWarnings()
+    fetchWarnings(),
+    loadThresholdConfig() // 加载阈值配置
   ])
   updateChartData()
   updatePieChart()
@@ -2099,6 +2363,20 @@ onMounted(async () => {
       }, 500)
     }
   }, 100)
+  
+  // 设置定时自动刷新天气数据，每小时一次
+  weatherRefreshTimer = setInterval(() => {
+    console.log('⏰ 定时自动刷新天气数据...')
+    addWeatherMarkers(true) // 强制刷新，忽略缓存
+  }, CACHE_DURATION)
+  
+  // 组件卸载时清除定时器
+  onUnmounted(() => {
+    if (weatherRefreshTimer) {
+      clearInterval(weatherRefreshTimer)
+      console.log('⏹️ 清除天气数据自动刷新定时器')
+    }
+  })
 })
 </script>
 
@@ -2496,6 +2774,12 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+}
+
+.warning-tags {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .warning-time {

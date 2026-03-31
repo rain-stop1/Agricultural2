@@ -11,7 +11,7 @@ try {
 
 class WeatherService {
   constructor() {
-    this.apiKey = process.env.OPENWEATHER_API_KEY || process.env.WEATHER_API_KEY || 'demo'
+    this.apiKey = process.env.OPENWEATHER_API_KEY || process.env.WEATHER_API_KEY || 'YOUR_OPENWEATHER_API_KEY'
     this.baseURL = 'https://api.openweathermap.org/data/2.5'
   }
 
@@ -23,78 +23,60 @@ class WeatherService {
         return this.getMockWeatherData(location)
       }
 
-      // 获取当前天气
+      // 使用OpenWeather API接口
       const weatherUrl = `${this.baseURL}/weather?q=${encodeURIComponent(location)}&appid=${this.apiKey}&units=metric&lang=zh_cn`
+      
+      console.log(`调用实时天气API: ${weatherUrl}`)
       
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000) // 10秒超时
 
-      const response = await fetch(weatherUrl, { 
+      const weatherResponse = await fetch(weatherUrl, { 
         signal: controller.signal,
         timeout: 10000
       })
       
       clearTimeout(timeoutId)
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      console.log(`实时天气API响应状态: ${weatherResponse.status} ${weatherResponse.statusText}`)
+      
+      if (!weatherResponse.ok) {
+        const errorText = await weatherResponse.text()
+        console.log(`实时天气API错误响应: ${errorText}`)
+        throw new Error(`HTTP ${weatherResponse.status}: ${weatherResponse.statusText} - ${errorText}`)
       }
 
-      const data = await response.json()
+      const weatherData = await weatherResponse.json()
+      console.log(`实时天气API响应数据:`, weatherData)
 
-      if (data.cod !== 200) {
-        throw new Error(data.message || `天气API错误代码: ${data.cod}`)
+      if (!weatherData.main) {
+        throw new Error('天气API返回数据格式错误')
       }
 
-      // 获取降雨量（通过One Call API获取更详细的数据）
-      let rainfall = 0
-      try {
-        const lat = data.coord.lat
-        const lon = data.coord.lon
-        const oneCallUrl = `${this.baseURL}/onecall?lat=${lat}&lon=${lon}&appid=${this.apiKey}&units=metric&exclude=minutely,hourly,daily,alerts`
-        
-        const oneCallResponse = await fetch(oneCallUrl, { 
-          signal: controller.signal,
-          timeout: 5000
-        })
-        
-        if (oneCallResponse.ok) {
-          const oneCallData = await oneCallResponse.json()
-          // 当前小时的降雨量（mm）
-          rainfall = oneCallData.current?.rain?.['1h'] || oneCallData.current?.snow?.['1h'] || 0
-        }
-      } catch (rainError) {
-        console.log('获取降雨量数据失败，使用默认值:', rainError.message)
-        rainfall = Math.random() * 10 // 备用模拟值
-      }
-
+      // 构建返回数据 - 使用中文城市名称
+      const cityName = this.getCityName(location) || location
+      
       return {
-        region: location,
-        temperature: parseFloat(data.main.temp),
-        humidity: parseFloat(data.main.humidity),
-        rainfall: parseFloat(rainfall),
-        wind_speed: parseFloat(data.wind?.speed || 0),
-        wind_direction: this.getWindDirection(data.wind?.deg || 0),
-        air_pressure: parseFloat(data.main.pressure),
+        region: cityName,
+        temperature: parseFloat(weatherData.main.temp || 0),
+        humidity: parseFloat(weatherData.main.humidity || 0),
+        rainfall: 0, // OpenWeather API需要单独调用降水API
+        wind_speed: parseFloat(weatherData.wind.speed || 0),
+        wind_direction: this.getWindDirection(weatherData.wind.deg || 0),
+        air_pressure: parseFloat(weatherData.main.pressure || 0),
         record_time: new Date(),
         source: 'openweather_api',
-        weather_text: data.weather[0]?.description || '',
-        weather_code: data.weather[0]?.id?.toString() || ''
+        is_mock: false,
+        weather_text: weatherData.weather[0].description || '未知',
+        weather_code: weatherData.weather[0].id || '0',
+        alerts: []
       }
     } catch (error) {
       console.error(`获取${location}真实天气数据失败:`, error.message)
       
-      // 如果是网络错误，返回模拟数据
-      if (error.message.includes('ECONNREFUSED') || 
-          error.message.includes('ENOTFOUND') || 
-          error.message.includes('timeout') ||
-          error.message.includes('401') ||
-          error.message.includes('403')) {
-        console.log('🔄 API错误，使用模拟天气数据')
-        return this.getMockWeatherData(location)
-      }
-      
-      throw error
+      // 所有错误都返回模拟数据
+      console.log('🔄 API错误，使用模拟天气数据')
+      return this.getMockWeatherData(location)
     }
   }
 
@@ -118,8 +100,11 @@ class WeatherService {
     const condition = weatherConditions[Math.floor(Math.random() * weatherConditions.length)]
     const temperature = Math.floor(Math.random() * (condition.tempRange[1] - condition.tempRange[0]) + condition.tempRange[0])
 
+    // 使用中文城市名称
+    const cityName = this.getCityName(location) || location
+
     return {
-      region: location,
+      region: cityName,
       temperature: temperature,
       humidity: Math.floor(Math.random() * 60 + 30),
       rainfall: Math.random() * 30,
@@ -128,6 +113,7 @@ class WeatherService {
       air_pressure: Math.floor(Math.random() * 50 + 980),
       record_time: new Date(),
       source: 'mock_data',
+      is_mock: true,
       weather_text: condition.text,
       weather_code: condition.code
     }
@@ -141,59 +127,89 @@ class WeatherService {
         return this.getMockForecastData(location, days)
       }
 
-      // 首先获取城市坐标
-      const geoUrl = `${this.baseURL}/weather?q=${encodeURIComponent(location)}&appid=${this.apiKey}&units=metric`
+      // 使用OpenWeather API的forecast接口
+      const forecastUrl = `${this.baseURL}/forecast?q=${encodeURIComponent(location)}&appid=${this.apiKey}&units=metric&lang=zh_cn`
+      
+      console.log(`调用天气预报API: ${forecastUrl}`)
       
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000)
-
-      const geoResponse = await fetch(geoUrl, { 
-        signal: controller.signal,
-        timeout: 5000
-      })
-      
-      if (!geoResponse.ok) {
-        throw new Error(`获取城市坐标失败: HTTP ${geoResponse.status}`)
-      }
-
-      const geoData = await geoResponse.json()
-      
-      if (geoData.cod !== 200) {
-        throw new Error(geoData.message || `天气API错误代码: ${geoData.cod}`)
-      }
-
-      const { lat, lon } = geoData.coord
-
-      // 使用One Call API获取天气预报
-      const forecastUrl = `${this.baseURL}/onecall?lat=${lat}&lon=${lon}&appid=${this.apiKey}&units=metric&exclude=current,minutely,hourly,alerts`
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30秒超时
 
       const forecastResponse = await fetch(forecastUrl, { 
         signal: controller.signal,
-        timeout: 10000
+        timeout: 30000
       })
       
       clearTimeout(timeoutId)
 
+      console.log(`天气预报API响应状态: ${forecastResponse.status} ${forecastResponse.statusText}`)
+      
       if (!forecastResponse.ok) {
-        throw new Error(`获取天气预报失败: HTTP ${forecastResponse.status}`)
+        const errorText = await forecastResponse.text()
+        console.log(`天气预报API错误响应: ${errorText}`)
+        throw new Error(`HTTP ${forecastResponse.status}: ${forecastResponse.statusText} - ${errorText}`)
       }
 
       const forecastData = await forecastResponse.json()
+      console.log(`天气预报API响应数据:`, forecastData)
 
-      return forecastData.daily.slice(0, days).map(day => {
-        const date = new Date(day.dt * 1000).toISOString().split('T')[0]
-        return {
-          date: date,
-          temperature_high: parseFloat(day.temp.max),
-          temperature_low: parseFloat(day.temp.min),
-          humidity: parseFloat(day.humidity),
-          rainfall: parseFloat(day.rain?.['24h'] || day.snow?.['24h'] || 0),
-          wind_speed: parseFloat(day.wind_speed),
-          wind_direction: this.getWindDirection(day.wind_deg),
-          weather_text: day.weather[0]?.description || '',
-          weather_code: day.weather[0]?.id?.toString() || ''
+      if (!forecastData.list || forecastData.list.length === 0) {
+        throw new Error('天气API返回数据格式错误')
+      }
+
+      // 处理OpenWeather API的3小时预报数据，转换为每日预报
+      const dailyForecasts = {}
+      
+      forecastData.list.forEach(item => {
+        const date = item.dt_txt.split(' ')[0]
+        if (!dailyForecasts[date]) {
+          dailyForecasts[date] = {
+            date,
+            temps: [],
+            humidity: [],
+            wind_speeds: [],
+            rainfall: [],
+            rain_probability: [], // 降雨概率
+            weather: null
+          }
+        }
+        dailyForecasts[date].temps.push(item.main.temp)
+        dailyForecasts[date].humidity.push(item.main.humidity)
+        dailyForecasts[date].wind_speeds.push(item.wind.speed)
+        // 提取降雨量数据（rain字段包含3h表示3小时的降雨量，单位mm）
+        const rainAmount = item.rain && item.rain['3h'] ? item.rain['3h'] : 0
+        dailyForecasts[date].rainfall.push(rainAmount)
+        // 提取降雨概率（pop字段，取值0-1，转换为百分比）
+        const pop = item.pop !== undefined ? item.pop : 0
+        dailyForecasts[date].rain_probability.push(pop)
+        if (!dailyForecasts[date].weather) {
+          dailyForecasts[date].weather = item.weather[0]
         }
       })
+
+      // 转换为所需格式
+      return Object.values(dailyForecasts)
+        .slice(0, days)
+        .map(day => {
+          // 计算总降雨量（将所有3小时段的降雨量相加）
+          const totalRainfall = day.rainfall.reduce((a, b) => a + b, 0)
+          // 计算最大降雨概率（取一天中的最大值，转换为百分比）
+          const maxRainProbability = day.rain_probability.length > 0 
+            ? Math.max(...day.rain_probability) * 100 
+            : 0
+          return {
+            date: day.date,
+            temperature_high: Math.max(...day.temps),
+            temperature_low: Math.min(...day.temps),
+            humidity: day.humidity.length > 0 ? Math.round(day.humidity.reduce((a, b) => a + b, 0) / day.humidity.length) : 0,
+            rainfall: parseFloat(totalRainfall.toFixed(2)), // 总降雨量（mm）
+            rain_probability: Math.round(maxRainProbability), // 降雨概率（%）
+            wind_speed: day.wind_speeds.length > 0 ? day.wind_speeds.reduce((a, b) => a + b, 0) / day.wind_speeds.length : 0,
+            wind_direction: '无', // OpenWeather API返回的是角度，需要转换
+            weather_text: day.weather ? day.weather.description : '未知',
+            weather_code: day.weather ? day.weather.id.toString() : '0'
+          }
+        })
     } catch (error) {
       console.error('获取天气预报失败:', error.message)
       
@@ -243,32 +259,83 @@ class WeatherService {
   async syncWeatherData(locations) {
     const results = []
     
+    // 获取当前最大批序
+    let currentBatchOrder = 1
+    try {
+      const { WarningRecord } = require('../models')
+      const maxBatch = await WarningRecord.max('batch_order')
+      if (maxBatch) {
+        currentBatchOrder = maxBatch + 1
+      }
+      console.log(`当前批序: ${currentBatchOrder}`)
+    } catch (error) {
+      console.error('获取批序失败:', error.message)
+    }
+    
     for (const location of locations) {
       try {
         const weatherData = await this.getRealWeather(location)
         
-        // 检查是否已存在相同时间的记录（避免重复）
-        const existing = await WeatherData.findOne({
-          where: {
-            region: location,
-            record_time: {
-              [require('sequelize').Op.gte]: new Date(Date.now() - 30 * 60 * 1000) // 30分钟内
+        // 移除防重复检查，直接创建天气数据记录
+        await WeatherData.create(weatherData)
+        results.push({ location, success: true, data: weatherData })
+        console.log(`✅ ${location} 天气数据同步成功`)
+        
+        // 自动获取气象局预警
+        if (weatherData.alerts && weatherData.alerts.length > 0) {
+          console.log(`⚠️ ${location} 检测到 ${weatherData.alerts.length} 条气象局预警`)
+          
+          // 导入模型
+          const { WarningRecord, DisasterType } = require('../models')
+          
+          // 处理每个预警
+          for (const alert of weatherData.alerts) {
+            try {
+              // 查找对应的灾害类型
+              let disasterType = await DisasterType.findOne({
+                where: {
+                  type_name: alert.type_name
+                }
+              })
+              
+              // 如果没有找到，创建新的灾害类型
+              if (!disasterType) {
+                disasterType = await DisasterType.create({
+                  type_name: alert.type_name,
+                  type_code: alert.type.toLowerCase(),
+                  description: alert.message,
+                  warning_criteria: JSON.stringify({})
+                })
+              }
+              
+              // 移除重复预警检查，直接创建预警记录
+              // 创建预警记录
+              const warningData = {
+                disaster_type_id: disasterType.id,
+                region: alert.city,
+                warning_level: alert.level,
+                warning_content: alert.message,
+                start_time: new Date(alert.effective_time || Date.now()),
+                end_time: alert.expire_time ? new Date(alert.expire_time) : null,
+                status: 'active',
+                batch_order: currentBatchOrder,
+                source: 'meteorological_bureau'
+              }
+              
+              await WarningRecord.create(warningData)
+              console.log(`✅ 创建气象局预警: ${alert.type_name} - ${alert.city} (批序: ${currentBatchOrder})`)
+            } catch (error) {
+              console.error(`❌ 创建气象局预警失败:`, error.message)
             }
           }
-        })
-
-        if (!existing) {
-          await WeatherData.create(weatherData)
-          results.push({ location, success: true, data: weatherData })
-          console.log(`✅ ${location} 天气数据同步成功`)
-        } else {
-          results.push({ location, success: true, message: '数据已是最新' })
-          console.log(`⏭️  ${location} 数据已是最新，跳过`)
         }
       } catch (error) {
         console.error(`❌ ${location} 天气数据同步失败:`, error.message)
         results.push({ location, success: false, error: error.message })
       }
+      
+      // 避免API调用过于频繁
+      await new Promise(resolve => setTimeout(resolve, 1000))
     }
 
     return results
@@ -472,36 +539,173 @@ class WeatherService {
     return names[type] || type
   }
 
-  // 获取支持的城市列表
+  // 获取支持的城市列表（117个城市）
   getSupportedCities() {
     return [
+      // 直辖市
       { code: 'beijing', name: '北京' },
       { code: 'shanghai', name: '上海' },
-      { code: 'guangzhou', name: '广州' },
-      { code: 'shenzhen', name: '深圳' },
-      { code: 'hangzhou', name: '杭州' },
-      { code: 'nanjing', name: '南京' },
-      { code: 'wuhan', name: '武汉' },
-      { code: 'chengdu', name: '成都' },
-      { code: 'xian', name: '西安' },
       { code: 'tianjin', name: '天津' },
       { code: 'chongqing', name: '重庆' },
-      { code: 'shijiazhuang', name: '石家庄' },
-      { code: 'jinan', name: '济南' },
-      { code: 'qingdao', name: '青岛' },
-      { code: 'dalian', name: '大连' },
-      { code: 'xiamen', name: '厦门' },
-      { code: 'suzhou', name: '苏州' },
-      { code: 'zhengzhou', name: '郑州' },
-      { code: 'changsha', name: '长沙' },
-      { code: 'hefei', name: '合肥' }
+      
+      // 省会及重点城市
+    { code: 'shijiazhuang', name: '石家庄' },
+    { code: 'taiyuan', name: '太原' },
+    { code: 'hohhot', name: '呼和浩特' },
+    { code: 'shenyang', name: '沈阳' },
+    { code: 'dalian', name: '大连' },
+    { code: 'changchun', name: '长春' },
+    { code: 'harbin', name: '哈尔滨' },
+    { code: 'nanjing', name: '南京' },
+    { code: 'suzhou', name: '苏州' },
+    { code: 'hangzhou', name: '杭州' },
+    { code: 'hefei', name: '合肥' },
+    { code: 'fuzhou', name: '福州' },
+    { code: 'xiamen', name: '厦门' },
+    { code: 'nanchang', name: '南昌' },
+    { code: 'jinan', name: '济南' },
+    { code: 'qingdao', name: '青岛' },
+    { code: 'zhengzhou', name: '郑州' },
+    { code: 'wuhan', name: '武汉' },
+    { code: 'changsha', name: '长沙' },
+    { code: 'guangzhou', name: '广州' },
+    { code: 'shenzhen', name: '深圳' },
+    { code: 'nanning', name: '南宁' },
+    { code: 'haikou', name: '海口' },
+    { code: 'chengdu', name: '成都' },
+    { code: 'guiyang', name: '贵阳' },
+    { code: 'kunming', name: '昆明' },
+    { code: 'lhasa', name: '拉萨' },
+    { code: 'xian', name: '西安' },
+    { code: 'lanzhou', name: '兰州' },
+    { code: 'xining', name: '西宁' },
+    { code: 'yinchuan', name: '银川' },
+    { code: 'urumqi', name: '乌鲁木齐' },
+      
+      // 河北省地级市
+      { code: 'tangshan', name: '唐山' },
+      { code: 'qinhuangdao', name: '秦皇岛' },
+      { code: 'handan', name: '邯郸' },
+      { code: 'baoding', name: '保定' },
+      { code: 'zhangjiakou', name: '张家口' },
+      { code: 'chengde', name: '承德' },
+      { code: 'cangzhou', name: '沧州' },
+      { code: 'langfang', name: '廊坊' },
+      { code: 'hengshui', name: '衡水' },
+      
+      // 山西省地级市
+    { code: 'datong', name: '大同' },
+    { code: 'yangquan', name: '阳泉' },
+    { code: 'changzhi', name: '长治' },
+    { code: 'jincheng', name: '晋城' },
+    { code: 'shuozhou', name: '朔州' },
+    { code: 'jinzhong', name: '晋中' },
+    { code: 'yuncheng', name: '运城' },
+    { code: 'xinzhou', name: '忻州' },
+    { code: 'linfen', name: '临汾' },
+    { code: 'lvliang', name: '吕梁' },
+      
+      // 辽宁省地级市
+      { code: 'anshan', name: '鞍山' },
+      { code: 'fushun', name: '抚顺' },
+      { code: 'benxi', name: '本溪' },
+      { code: 'dandong', name: '丹东' },
+      { code: 'jinzhou', name: '锦州' },
+      { code: 'yingkou', name: '营口' },
+      { code: 'fuxin', name: '阜新' },
+      { code: 'liaoyang', name: '辽阳' },
+      { code: 'panjin', name: '盘锦' },
+      { code: 'tieling', name: '铁岭' },
+      { code: 'chaoyang', name: '朝阳' },
+      { code: 'huludao', name: '葫芦岛' },
+      
+      // 江苏省地级市
+      { code: 'wuxi', name: '无锡' },
+      { code: 'xuzhou', name: '徐州' },
+      { code: 'changzhou', name: '常州' },
+      { code: 'nantong', name: '南通' },
+      { code: 'lianyungang', name: '连云港' },
+      { code: 'huaian', name: '淮安' },
+      { code: 'yancheng', name: '盐城' },
+      { code: 'yangzhou', name: '扬州' },
+      { code: 'zhenjiang', name: '镇江' },
+      { code: 'taizhou', name: '泰州' },
+      { code: 'suqian', name: '宿迁' },
+      
+      // 浙江省地级市
+      { code: 'ningbo', name: '宁波' },
+      { code: 'wenzhou', name: '温州' },
+      { code: 'jiaxing', name: '嘉兴' },
+      { code: 'huzhou', name: '湖州' },
+      { code: 'shaoxing', name: '绍兴' },
+      { code: 'jinhua', name: '金华' },
+      { code: 'quzhou', name: '衢州' },
+      { code: 'zhoushan', name: '舟山' },
+      { code: 'taizhou', name: '台州' },
+      { code: 'lishui', name: '丽水' },
+      
+      // 山东省地级市
+      { code: 'zibo', name: '淄博' },
+      { code: 'zaozhuang', name: '枣庄' },
+      { code: 'dongying', name: '东营' },
+      { code: 'yantai', name: '烟台' },
+      { code: 'weifang', name: '潍坊' },
+      { code: 'jining', name: '济宁' },
+      { code: 'taian', name: '泰安' },
+      { code: 'weihai', name: '威海' },
+      { code: 'rizhao', name: '日照' },
+      { code: 'linyi', name: '临沂' },
+      { code: 'dezhou', name: '德州' },
+      { code: 'liaocheng', name: '聊城' },
+      { code: 'binzhou', name: '滨州' },
+      { code: 'heze', name: '菏泽' },
+      
+      // 广东省地级市
+      { code: 'zhuhai', name: '珠海' },
+      { code: 'shantou', name: '汕头' },
+      { code: 'foshan', name: '佛山' },
+      { code: 'jiangmen', name: '江门' },
+      { code: 'zhanjiang', name: '湛江' },
+      { code: 'maoming', name: '茂名' },
+      { code: 'zhaoqing', name: '肇庆' },
+      { code: 'huizhou', name: '惠州' },
+      { code: 'meizhou', name: '梅州' },
+      { code: 'shanwei', name: '汕尾' },
+      { code: 'dongguan', name: '东莞' },
+      { code: 'zhongshan', name: '中山' },
+      { code: 'chaozhou', name: '潮州' },
+      { code: 'jieyang', name: '揭阳' },
+      { code: 'yunfu', name: '云浮' }
     ]
   }
 
-  // 根据城市代码获取中文名称
+  // 获取城市代码获取中文名称
   getCityName(code) {
     const city = this.getSupportedCities().find(c => c.code === code)
     return city ? city.name : code
+  }
+
+  // 获取气象局发布的灾害预警
+  async getMeteorologicalAlerts(location) {
+    try {
+      // OpenWeather API 没有直接提供气象灾害预警的接口
+      console.log(`OpenWeather API 不支持直接获取气象局灾害预警，返回空数组`)
+      return []
+    } catch (error) {
+      console.error(`获取${location}气象局灾害预警失败:`, error.message)
+      return []
+    }
+  }
+
+  // 映射预警级别
+  mapAlarmLevel(level) {
+    const levelMap = {
+      'blue': 'light',
+      'yellow': 'moderate',
+      'orange': 'severe',
+      'red': 'severe'
+    }
+    return levelMap[level] || 'moderate'
   }
 }
 

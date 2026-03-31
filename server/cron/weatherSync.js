@@ -3,7 +3,7 @@ const { WarningRecord, DisasterType } = require('../models')
 
 class WeatherSyncCron {
   constructor() {
-    this.syncInterval = 30 * 60 * 1000 // 30分钟同步一次
+    this.syncInterval = 60 * 60 * 1000 // 60分钟同步一次，匹配API每小时更新频率
     this.isRunning = false
     this.cities = weatherService.getSupportedCities()
   }
@@ -77,6 +77,19 @@ class WeatherSyncCron {
   async detectAndCreateWarnings(syncResults) {
     console.log('🔍 开始检测潜在灾害...')
     
+    // 获取当前最大批序
+    let currentBatchOrder = 1
+    try {
+      const maxBatch = await WarningRecord.max('batch_order')
+      console.log(`获取到的最大批序: ${maxBatch}`)
+      if (maxBatch) {
+        currentBatchOrder = maxBatch + 1
+      }
+      console.log(`当前批序: ${currentBatchOrder}`)
+    } catch (error) {
+      console.error('获取批序失败:', error.message)
+    }
+    
     for (const result of syncResults) {
       if (!result.success || !result.data) continue
       
@@ -104,11 +117,14 @@ class WeatherSyncCron {
             
             if (!disasterType) continue
             
+            // 创建新预警 - 使用中文城市名
+            const cityName = weatherService.getCityName(result.data.region) || result.data.region
+            
             // 检查是否已存在相同的有效预警
             const existingWarning = await WarningRecord.findOne({
               where: {
                 disaster_type_id: disasterType.id,
-                region: result.data.region,
+                region: cityName,
                 status: 'active',
                 created_at: {
                   [require('sequelize').Op.gte]: new Date(Date.now() - 2 * 60 * 60 * 1000) // 2小时内
@@ -117,19 +133,17 @@ class WeatherSyncCron {
             })
             
             if (!existingWarning) {
-              // 创建新预警 - 使用中文城市名
-              const cityName = weatherService.getCityName(result.data.region) || result.data.region
-              
               await WarningRecord.create({
                 disaster_type_id: disasterType.id,
                 region: cityName,
                 warning_level: risk.level,
                 warning_content: risk.message,
                 start_time: new Date(),
-                status: 'active'
+                status: 'active',
+                batch_order: currentBatchOrder
               })
               
-              console.log(`⚠️  创建预警: ${cityName} - ${risk.message}`)
+              console.log(`⚠️  创建预警: ${cityName} - ${risk.message} (批序: ${currentBatchOrder})`)
             }
           }
         }

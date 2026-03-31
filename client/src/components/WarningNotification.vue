@@ -257,7 +257,7 @@ const playNotificationSound = () => {
 // 浏览器通知
 const showBrowserNotification = (notification) => {
   if ('Notification' in window && Notification.permission === 'granted') {
-    const browserNotification = new Notification('农业灾害预警系统', {
+    const browserNotification = new Notification('农业灾害预警与应急响应系统', {
       body: notification.message,
       icon: '/warning-icon.png',
       tag: notification.id

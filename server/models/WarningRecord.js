@@ -42,7 +42,18 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('active', 'expired', 'cancelled'),
       defaultValue: 'active',
       comment: '预警状态：active有效，expired已过期，cancelled已取消'
-    }
+    },
+    batch_order: {
+      type: DataTypes.INTEGER,
+      defaultValue: 1,
+      comment: '预警批序，每半小时为一批'
+    },
+    // 暂时注释掉source字段，因为数据库中可能还没有这个字段
+    // source: {
+    //   type: DataTypes.ENUM('meteorological_bureau', 'threshold'),
+    //   defaultValue: 'threshold',
+    //   comment: '预警来源：meteorological_bureau气象局，threshold阈值设定'
+    // }
   }, {
     tableName: 'warning_records',
     timestamps: true,

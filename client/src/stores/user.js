@@ -32,15 +32,14 @@ export const useUserStore = defineStore('user', () => {
         await fetchUserInfo()
         
         ElMessage.success('登录成功')
-        return true
+        return { success: true, error: null }
       } else {
-        ElMessage.error(response.message || '登录失败')
-        return false
+        return { success: false, error: response.message || '登录失败' }
       }
     } catch (error) {
       console.error('登录错误:', error)
-      ElMessage.error('登录失败，请检查网络连接')
-      return false
+      const errorMsg = error.response?.data?.message || error.message || '登录失败，请检查网络连接'
+      return { success: false, error: errorMsg }
     } finally {
       loading.value = false
     }
@@ -61,7 +60,8 @@ export const useUserStore = defineStore('user', () => {
       }
     } catch (error) {
       console.error('注册错误:', error)
-      ElMessage.error('注册失败，请检查网络连接')
+      const errorMsg = error.response?.data?.message || error.message || '注册失败，请检查网络连接'
+      ElMessage.error(errorMsg)
       return false
     } finally {
       loading.value = false

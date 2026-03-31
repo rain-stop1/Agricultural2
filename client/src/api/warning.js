@@ -61,3 +61,11 @@ export const getWarningStatistics = () => {
     method: 'get'
   })
 }
+
+// 获取气象局发布的灾害预警
+export const fetchMeteorologicalAlerts = () => {
+  return request({
+    url: '/warning/meteorological-alerts',
+    method: 'post'
+  })
+}
